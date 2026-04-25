@@ -1,0 +1,65 @@
+name: Build & Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Run weekly on Monday at 9:07 AM UTC to catch macOS/Xcode SDK breakage
+    - cron: '7 9 * * 1'
+
+jobs:
+  build:
+    name: Build on macOS
+    runs-on: macos-latest
+    strategy:
+      matrix:
+        xcode: ['latest-stable']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Show environment
+        run: |
+          swift --version
+          xcodebuild -version
+          sw_vers
+
+      - name: Build with SPM (debug)
+        run: swift build
+
+      - name: Build with SPM (release)
+        run: swift build -c release
+
+      - name: Build .app bundle
+        run: |
+          APP_DIR="build/SmartCharge.app"
+          CONTENTS="${APP_DIR}/Contents"
+          mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources" "${CONTENTS}/Library/LaunchServices"
+
+          cp .build/release/SmartCharge "${CONTENTS}/MacOS/SmartCharge"
+          cp .build/release/SmartChargeHelper "${CONTENTS}/Library/LaunchServices/com.smartcharge.helper"
+          cp SmartCharge/Info.plist "${CONTENTS}/Info.plist"
+          echo -n "APPL????" > "${CONTENTS}/PkgInfo"
+
+      - name: Create DMG
+        run: |
+          mkdir -p build/dmg-staging
+          cp -R build/SmartCharge.app build/dmg-staging/
+          ln -s /Applications build/dmg-staging/Applications
+          hdiutil create -volname "SmartCharge" \
+            -srcfolder build/dmg-staging \
+            -ov -format UDZO \
+            build/SmartCharge.dmg
+          rm -rf build/dmg-staging
+
+      - name: Upload DMG artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: SmartCharge-${{ github.sha }}
+          path: build/SmartCharge.dmg

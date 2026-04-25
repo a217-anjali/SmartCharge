@@ -4,6 +4,7 @@ struct MenuBarView: View {
     @ObservedObject var batteryMonitor: BatteryMonitor
     @ObservedObject var stateMachine: ChargeStateMachine
     @ObservedObject var configStore: ChargeConfigStore
+    @ObservedObject var updateChecker: UpdateChecker
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
@@ -22,7 +23,19 @@ struct MenuBarView: View {
                 LabeledRow("Last Change", value: lastTransition.formatted(date: .omitted, time: .shortened))
             }
 
+            if let newVersion = updateChecker.updateAvailable {
+                Divider()
+                Button("Update Available: v\(newVersion)") {
+                    NSWorkspace.shared.open(updateChecker.releaseURL)
+                }
+                .foregroundStyle(.blue)
+            }
+
             Divider()
+
+            Button("Check for Updates...") {
+                updateChecker.checkForUpdate()
+            }
 
             Button("Settings...") {
                 NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)

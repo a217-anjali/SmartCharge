@@ -1,0 +1,58 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build & publish release
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Get version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF_NAME}" >> $GITHUB_OUTPUT
+
+      - name: Build release binary
+        run: swift build -c release
+
+      - name: Assemble .app bundle
+        run: |
+          APP_DIR="build/SmartCharge.app"
+          CONTENTS="${APP_DIR}/Contents"
+          mkdir -p "${CONTENTS}/MacOS" "${CONTENTS}/Resources" "${CONTENTS}/Library/LaunchServices"
+
+          cp .build/release/SmartCharge "${CONTENTS}/MacOS/SmartCharge"
+          cp .build/release/SmartChargeHelper "${CONTENTS}/Library/LaunchServices/com.smartcharge.helper"
+          cp SmartCharge/Info.plist "${CONTENTS}/Info.plist"
+          echo -n "APPL????" > "${CONTENTS}/PkgInfo"
+
+      - name: Create DMG
+        run: |
+          mkdir -p build/dmg-staging
+          cp -R build/SmartCharge.app build/dmg-staging/
+          ln -s /Applications build/dmg-staging/Applications
+          hdiutil create -volname "SmartCharge" \
+            -srcfolder build/dmg-staging \
+            -ov -format UDZO \
+            build/SmartCharge.dmg
+          rm -rf build/dmg-staging
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "SmartCharge ${{ steps.version.outputs.VERSION }}"
+          draft: false
+          generate_release_notes: true
+          files: build/SmartCharge.dmg

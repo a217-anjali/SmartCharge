@@ -7,6 +7,7 @@ struct SmartChargeApp: App {
     @StateObject private var batteryMonitor = BatteryMonitor()
     @StateObject private var helperProxy = HelperProxy()
     @StateObject private var stateMachine: ChargeStateMachine
+    @StateObject private var updateChecker = UpdateChecker()
 
     private let notificationManager = NotificationManager()
     private var cancellables = Set<AnyCancellable>()
@@ -19,9 +20,6 @@ struct SmartChargeApp: App {
 
         _helperProxy = StateObject(wrappedValue: hp)
         _stateMachine = StateObject(wrappedValue: sm)
-
-        // Can't store nm in a let since self isn't fully initialized.
-        // It's captured by the state machine and stays alive through it.
     }
 
     var body: some Scene {
@@ -29,8 +27,12 @@ struct SmartChargeApp: App {
             MenuBarView(
                 batteryMonitor: batteryMonitor,
                 stateMachine: stateMachine,
-                configStore: configStore
+                configStore: configStore,
+                updateChecker: updateChecker
             )
+            .onAppear {
+                updateChecker.checkForUpdate()
+            }
         } label: {
             Text(batteryMonitor.batteryState.menuBarTitle)
         }

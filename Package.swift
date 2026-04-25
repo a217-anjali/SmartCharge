@@ -13,6 +13,7 @@ let package = Package(
                        "Views/MenuBarView.swift", "Views/SettingsView.swift",
                        "Core/BatteryMonitor.swift", "Core/ChargeStateMachine.swift",
                        "Core/HelperProxy.swift", "Core/NotificationManager.swift",
+                       "Core/UpdateChecker.swift",
                        "Models/ChargeConfig.swift", "Models/BatteryState.swift"],
             linkerSettings: [
                 .linkedFramework("IOKit"),

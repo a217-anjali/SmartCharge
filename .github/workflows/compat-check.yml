@@ -1,0 +1,69 @@
+name: macOS Compatibility Check
+
+on:
+  schedule:
+    # Run daily at 6:13 AM UTC to detect SDK/toolchain breakage early
+    - cron: '13 6 * * *'
+  workflow_dispatch:
+
+jobs:
+  compat:
+    name: Check build on latest macOS
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Log environment
+        id: env
+        run: |
+          echo "SWIFT=$(swift --version | head -1)" >> $GITHUB_OUTPUT
+          echo "XCODE=$(xcodebuild -version | head -1)" >> $GITHUB_OUTPUT
+          echo "MACOS=$(sw_vers --productVersion)" >> $GITHUB_OUTPUT
+
+      - name: Build
+        id: build
+        run: swift build -c release 2>&1
+
+      - name: Report success
+        if: success()
+        run: |
+          echo "✅ Build passed"
+          echo "  Swift:  ${{ steps.env.outputs.SWIFT }}"
+          echo "  Xcode:  ${{ steps.env.outputs.XCODE }}"
+          echo "  macOS:  ${{ steps.env.outputs.MACOS }}"
+
+      - name: Open issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const title = `Build broken on macOS ${{ steps.env.outputs.MACOS }} / ${{ steps.env.outputs.XCODE }}`;
+            const existing = await github.rest.issues.listForRepo({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              labels: 'compat-failure'
+            });
+            if (existing.data.some(i => i.title === title)) return;
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title,
+              body: [
+                '## Automated compatibility check failed',
+                '',
+                `- **macOS:** ${{ steps.env.outputs.MACOS }}`,
+                `- **Xcode:** ${{ steps.env.outputs.XCODE }}`,
+                `- **Swift:** ${{ steps.env.outputs.SWIFT }}`,
+                `- **Run:** ${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
+                '',
+                'The daily build check failed. This likely means a new macOS or Xcode update broke something.',
+                'Check the workflow run logs for details.'
+              ].join('\n'),
+              labels: ['compat-failure', 'bug']
+            });
