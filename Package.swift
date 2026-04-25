@@ -10,7 +10,7 @@ let package = Package(
             path: "SmartCharge",
             exclude: ["Info.plist", "SmartCharge.entitlements", "Resources"],
             sources: ["SmartChargeApp.swift", "HelperProtocol.swift",
-                       "Views/MenuBarView.swift", "Views/SettingsView.swift",
+                       "Views/MainWindow.swift", "Views/MenuBarView.swift", "Views/SettingsView.swift",
                        "Core/BatteryMonitor.swift", "Core/ChargeStateMachine.swift",
                        "Core/HelperProxy.swift", "Core/NotificationManager.swift",
                        "Core/UpdateChecker.swift",

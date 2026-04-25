@@ -8,9 +8,7 @@ struct SmartChargeApp: App {
     @StateObject private var helperProxy = HelperProxy()
     @StateObject private var stateMachine: ChargeStateMachine
     @StateObject private var updateChecker = UpdateChecker()
-
-    private let notificationManager = NotificationManager()
-    private var cancellables = Set<AnyCancellable>()
+    @StateObject private var coordinator = AppCoordinator()
 
     init() {
         let nm = NotificationManager()
@@ -23,19 +21,24 @@ struct SmartChargeApp: App {
     }
 
     var body: some Scene {
-        MenuBarExtra {
-            MenuBarView(
+        WindowGroup {
+            MainWindow(
                 batteryMonitor: batteryMonitor,
                 stateMachine: stateMachine,
                 configStore: configStore,
                 updateChecker: updateChecker
             )
             .onAppear {
+                coordinator.start(
+                    batteryMonitor: batteryMonitor,
+                    stateMachine: stateMachine,
+                    configStore: configStore
+                )
                 updateChecker.checkForUpdate()
             }
-        } label: {
-            Text(batteryMonitor.batteryState.menuBarTitle)
+            .frame(minWidth: 520, minHeight: 560)
         }
+        .windowResizability(.contentSize)
 
         Settings {
             SettingsView(configStore: configStore)
@@ -43,7 +46,6 @@ struct SmartChargeApp: App {
     }
 }
 
-/// Glue that runs the monitor loop and feeds battery state into the state machine.
 @MainActor
 final class AppCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
