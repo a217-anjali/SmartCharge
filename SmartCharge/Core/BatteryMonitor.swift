@@ -66,6 +66,10 @@ final class BatteryMonitor: ObservableObject {
         let maxCapacity = desc[kIOPSMaxCapacityKey] as? Int
         let cycleCount = readCycleCount()
 
+        // Read temperature and charge rate from AppleSmartBattery IORegistry
+        let temperature = readBatteryTemperature()
+        let chargeRate = readChargeRate()
+
         batteryState = BatteryState(
             level: level,
             isPluggedIn: isPluggedIn,
@@ -73,7 +77,9 @@ final class BatteryMonitor: ObservableObject {
             timeRemaining: timeRemaining,
             cycleCount: cycleCount,
             batteryHealth: batteryHealth,
-            maxCapacity: maxCapacity
+            maxCapacity: maxCapacity,
+            temperature: temperature,
+            chargeRate: chargeRate
         )
 
         Self.logger.debug("Battery: \(level)%, plugged: \(isPluggedIn), charging: \(isCharging)")
@@ -88,5 +94,38 @@ final class BatteryMonitor: ObservableObject {
             return nil
         }
         return prop.takeRetainedValue() as? Int
+    }
+
+    /// Reads battery temperature from the AppleSmartBattery IORegistry service.
+    /// The "Temperature" key returns a value in centidegrees Celsius (e.g. 3250 = 32.50°C).
+    private func readBatteryTemperature() -> Double? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+
+        guard let prop = IORegistryEntryCreateCFProperty(service, "Temperature" as CFString, kCFAllocatorDefault, 0) else {
+            return nil
+        }
+        guard let centidegrees = prop.takeRetainedValue() as? Int else { return nil }
+        return Double(centidegrees) / 100.0
+    }
+
+    /// Reads instantaneous amperage and voltage from the AppleSmartBattery IORegistry service
+    /// and computes the charge rate in watts: voltage (mV) * amperage (mA) / 1,000,000.
+    private func readChargeRate() -> Double? {
+        let service = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard service != 0 else { return nil }
+        defer { IOObjectRelease(service) }
+
+        guard let amperageProp = IORegistryEntryCreateCFProperty(service, "InstantAmperage" as CFString, kCFAllocatorDefault, 0),
+              let voltageProp = IORegistryEntryCreateCFProperty(service, "Voltage" as CFString, kCFAllocatorDefault, 0) else {
+            return nil
+        }
+
+        guard let amperage = amperageProp.takeRetainedValue() as? Int,
+              let voltage = voltageProp.takeRetainedValue() as? Int else { return nil }
+
+        let watts = Double(voltage) * Double(amperage) / 1_000_000.0
+        return abs(watts)
     }
 }

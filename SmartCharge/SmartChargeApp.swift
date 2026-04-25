@@ -6,9 +6,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "AppDelegate")
     var onTerminate: (() -> Void)?
 
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
-    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
 
     func applicationWillTerminate(_ notification: Notification) {
         Self.logger.info("App terminating")
@@ -31,8 +29,12 @@ struct SmartChargeApp: App {
     @StateObject private var updateChecker = UpdateChecker()
     @StateObject private var activityLogger: ActivityLogger
     @StateObject private var coordinator = AppCoordinator()
+    @StateObject private var chargeHistory = ChargeHistory()
+    @StateObject private var profileManager = ProfileManager()
+    @StateObject private var globalShortcuts = GlobalShortcuts()
 
     @State private var hasAppeared = false
+    @AppStorage("hasCompletedOnboarding") private var hasCompletedOnboarding = false
 
     init() {
         let nm = NotificationManager()
@@ -48,14 +50,25 @@ struct SmartChargeApp: App {
 
     var body: some Scene {
         WindowGroup {
-            MainWindow(
-                batteryMonitor: batteryMonitor,
-                stateMachine: stateMachine,
-                configStore: configStore,
-                updateChecker: updateChecker,
-                helperProxy: helperProxy,
-                activityLogger: activityLogger
-            )
+            Group {
+                if hasCompletedOnboarding {
+                    MainWindow(
+                        batteryMonitor: batteryMonitor,
+                        stateMachine: stateMachine,
+                        configStore: configStore,
+                        updateChecker: updateChecker,
+                        helperProxy: helperProxy,
+                        activityLogger: activityLogger,
+                        chargeHistory: chargeHistory,
+                        profileManager: profileManager
+                    )
+                } else {
+                    OnboardingView(
+                        hasCompletedOnboarding: $hasCompletedOnboarding,
+                        configStore: configStore
+                    )
+                }
+            }
             .onAppear {
                 guard !hasAppeared else { return }
                 hasAppeared = true
@@ -67,14 +80,31 @@ struct SmartChargeApp: App {
                 coordinator.start(
                     batteryMonitor: batteryMonitor,
                     stateMachine: stateMachine,
-                    configStore: configStore
+                    configStore: configStore,
+                    chargeHistory: chargeHistory
                 )
+
+                globalShortcuts.onToggleCharging = { [weak sm = stateMachine, weak hp = helperProxy] in
+                    // Toggle charge state
+                    if sm?.state == .charging {
+                        hp?.disableCharging { _, _ in }
+                    } else {
+                        hp?.enableCharging { _, _ in }
+                    }
+                }
+                globalShortcuts.onShowWindow = {
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+                if globalShortcuts.shortcutsEnabled {
+                    globalShortcuts.register()
+                }
+
                 updateChecker.checkForUpdate()
                 activityLogger.log(.appLaunched, batteryLevel: batteryMonitor.batteryState.level,
                     detail: "SmartCharge v\(updateChecker.appVersion) started")
             }
         }
-        .defaultSize(width: 560, height: 700)
+        .defaultSize(width: 580, height: 800)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -90,36 +120,26 @@ struct SmartChargeApp: App {
             }
 
             CommandGroup(after: .appInfo) {
-                Button("Check for Updates...") {
-                    updateChecker.checkForUpdate()
-                }
-                .disabled(updateChecker.isChecking)
+                Button("Check for Updates...") { updateChecker.checkForUpdate() }
+                    .disabled(updateChecker.isChecking)
                 Divider()
             }
 
             CommandMenu("View") {
-                Button("Refresh Battery Status") {
-                    batteryMonitor.refresh()
-                }
-                .keyboardShortcut("r", modifiers: .command)
+                Button("Refresh Battery Status") { batteryMonitor.refresh() }
+                    .keyboardShortcut("r", modifiers: .command)
             }
 
             CommandGroup(replacing: .help) {
                 Button("SmartCharge Help") {
-                    if let url = URL(string: "https://github.com/a217-anjali/SmartCharge#readme") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    if let u = URL(string: "https://github.com/a217-anjali/SmartCharge#readme") { NSWorkspace.shared.open(u) }
                 }
                 Button("Visit GitHub Repository") {
-                    if let url = URL(string: "https://github.com/a217-anjali/SmartCharge") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    if let u = URL(string: "https://github.com/a217-anjali/SmartCharge") { NSWorkspace.shared.open(u) }
                 }
                 Divider()
                 Button("Report an Issue...") {
-                    if let url = URL(string: "https://github.com/a217-anjali/SmartCharge/issues/new") {
-                        NSWorkspace.shared.open(url)
-                    }
+                    if let u = URL(string: "https://github.com/a217-anjali/SmartCharge/issues/new") { NSWorkspace.shared.open(u) }
                 }
             }
         }
@@ -141,12 +161,12 @@ struct SmartChargeApp: App {
 final class AppCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
     private var started = false
-    private static let logger = Logger(subsystem: "com.smartcharge.app", category: "Coordinator")
 
     func start(
         batteryMonitor: BatteryMonitor,
         stateMachine: ChargeStateMachine,
-        configStore: ChargeConfigStore
+        configStore: ChargeConfigStore,
+        chargeHistory: ChargeHistory
     ) {
         guard !started else { return }
         started = true
@@ -156,9 +176,8 @@ final class AppCoordinator: ObservableObject {
             .combineLatest(configStore.$config)
             .sink { battery, config in
                 stateMachine.evaluate(battery: battery, config: config)
+                chargeHistory.record(state: battery)
             }
             .store(in: &cancellables)
-
-        Self.logger.info("Coordinator started")
     }
 }
