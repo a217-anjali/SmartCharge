@@ -7,28 +7,28 @@ struct MenuBarView: View {
     @ObservedObject var updateChecker: UpdateChecker
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        Group {
             Text("SmartCharge")
                 .font(.headline)
 
             Divider()
 
-            LabeledRow("Battery", value: batteryMonitor.batteryState.levelDescription)
-            LabeledRow("Power", value: batteryMonitor.batteryState.statusDescription)
-            LabeledRow("Charge Control", value: stateMachine.state.description)
-            LabeledRow("Start At", value: "\u{2264} \(configStore.config.chargeStartThreshold)%")
-            LabeledRow("Stop At", value: "\u{2265} \(configStore.config.chargeStopThreshold)%")
+            LabeledItem("Battery", value: batteryMonitor.batteryState.levelDescription)
+            LabeledItem("Power", value: batteryMonitor.batteryState.statusDescription)
+            LabeledItem("Control", value: stateMachine.state.description)
+            LabeledItem("Start At", value: "\u{2264} \(configStore.config.chargeStartThreshold)%")
+            LabeledItem("Stop At", value: "\u{2265} \(configStore.config.chargeStopThreshold)%")
 
             if let health = batteryMonitor.batteryState.batteryHealth {
-                LabeledRow("Health", value: health)
+                LabeledItem("Health", value: health)
             }
 
             if let cycles = batteryMonitor.batteryState.cycleCount {
-                LabeledRow("Cycles", value: "\(cycles)")
+                LabeledItem("Cycles", value: "\(cycles)")
             }
 
             if let lastTransition = stateMachine.lastTransition {
-                LabeledRow("Last Change", value: lastTransition.formatted(date: .omitted, time: .shortened))
+                LabeledItem("Last Change", value: lastTransition.formatted(date: .omitted, time: .shortened))
             }
 
             if let newVersion = updateChecker.updateAvailable {
@@ -36,12 +36,11 @@ struct MenuBarView: View {
                 Button("Update Available: v\(newVersion)") {
                     NSWorkspace.shared.open(updateChecker.releaseURL)
                 }
-                .foregroundStyle(.blue)
             }
 
             Divider()
 
-            Button("Open SmartCharge") {
+            Button("Open SmartCharge Window") {
                 NSApp.activate(ignoringOtherApps: true)
             }
 
@@ -50,10 +49,16 @@ struct MenuBarView: View {
             }
 
             Button("Settings...") {
-                NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                if #available(macOS 14.0, *) {
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                } else {
+                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                }
                 NSApp.activate(ignoringOtherApps: true)
             }
             .keyboardShortcut(",", modifiers: .command)
+
+            Divider()
 
             Button("Quit SmartCharge") {
                 stateMachine.forceDisableCharging()
@@ -61,11 +66,10 @@ struct MenuBarView: View {
             }
             .keyboardShortcut("q", modifiers: .command)
         }
-        .padding(8)
     }
 }
 
-private struct LabeledRow: View {
+private struct LabeledItem: View {
     let label: String
     let value: String
 
@@ -83,6 +87,5 @@ private struct LabeledRow: View {
                 .fontWeight(.medium)
         }
         .font(.system(.body, design: .rounded))
-        .accessibilityElement(children: .combine)
     }
 }

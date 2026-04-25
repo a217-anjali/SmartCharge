@@ -8,7 +8,7 @@ struct SettingsView: View {
     @State private var startThreshold: Double
     @State private var stopThreshold: Double
     @State private var showInvalidAlert = false
-    @State private var showResetConfirmation = false
+    @State private var showResetAlert = false
     @State private var showExportSuccess = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
@@ -31,7 +31,31 @@ struct SettingsView: View {
             advancedTab
                 .tabItem { Label("Advanced", systemImage: "wrench.and.screwdriver") }
         }
-        .frame(width: 480, height: 380)
+        .frame(width: 460, height: 340)
+        .alert("Invalid Thresholds", isPresented: $showInvalidAlert) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text("Start must be at least 10% below stop.\n\nStart range: 5–50%\nStop range: 50–100%")
+        }
+        .alert("Reset to Defaults?", isPresented: $showResetAlert) {
+            Button("Reset", role: .destructive) {
+                configStore.reset()
+                startThreshold = Double(configStore.config.chargeStartThreshold)
+                stopThreshold = Double(configStore.config.chargeStopThreshold)
+                activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config reset to defaults")
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This will reset all charge thresholds to their default values (20%–85%).")
+        }
+        .alert("Export Successful", isPresented: $showExportSuccess) {
+            Button("OK", role: .cancel) {}
+        }
+        .alert("Import Failed", isPresented: $showImportError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(importErrorMessage)
+        }
     }
 
     // MARK: - General Tab
@@ -63,7 +87,7 @@ struct SettingsView: View {
     private var thresholdsTab: some View {
         Form {
             Section("Charge Thresholds") {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 14) {
                     ThresholdSlider(
                         label: "Start charging at",
                         value: $startThreshold,
@@ -89,40 +113,27 @@ struct SettingsView: View {
             }
 
             Section {
-                Text("The gap between start and stop must be at least 10% to prevent rapid on/off cycling which can damage the battery controller.")
+                Text("The gap must be at least 10% to prevent rapid cycling.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 HStack {
                     Button("Reset to Defaults") {
-                        showResetConfirmation = true
+                        showResetAlert = true
                     }
-                    .confirmationDialog("Reset all thresholds to defaults?", isPresented: $showResetConfirmation) {
-                        Button("Reset", role: .destructive) {
-                            configStore.reset()
-                            startThreshold = Double(configStore.config.chargeStartThreshold)
-                            stopThreshold = Double(configStore.config.chargeStopThreshold)
-                            activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config reset to defaults")
-                        }
-                        Button("Cancel", role: .cancel) {}
-                    }
+                    .buttonStyle(.bordered)
 
                     Spacer()
 
                     Button("Apply") {
                         applyThresholds()
                     }
-                    .keyboardShortcut(.return, modifiers: .command)
                     .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
                 }
             }
         }
         .formStyle(.grouped)
-        .alert("Invalid Thresholds", isPresented: $showInvalidAlert) {
-            Button("OK") {}
-        } message: {
-            Text("Start threshold must be at least 10% below the stop threshold.\n\nStart: 5–50%\nStop: 50–100%")
-        }
     }
 
     // MARK: - Advanced Tab
@@ -134,7 +145,9 @@ struct SettingsView: View {
                     Button("Export Config...") {
                         exportConfig()
                     }
-                    Text("Save your settings to a JSON file.")
+                    .buttonStyle(.bordered)
+                    Spacer()
+                    Text("Save settings to JSON")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -143,7 +156,9 @@ struct SettingsView: View {
                     Button("Import Config...") {
                         importConfig()
                     }
-                    Text("Load settings from a JSON file.")
+                    .buttonStyle(.bordered)
+                    Spacer()
+                    Text("Load settings from JSON")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -152,32 +167,22 @@ struct SettingsView: View {
             Section("Activity") {
                 HStack {
                     Text("Events logged: \(activityLogger.events.count)")
-                        .font(.callout)
                     Spacer()
                     Button("Clear History") {
                         activityLogger.clearHistory()
                     }
+                    .buttonStyle(.bordered)
                 }
             }
 
             Section("About") {
                 LabeledContent("Version", value: Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "1.0.0")
                 LabeledContent("Bundle ID", value: "com.smartcharge.app")
-                LabeledContent("Minimum macOS", value: "13.0 Ventura")
+                LabeledContent("macOS Requirement", value: "13.0+")
                 LabeledContent("License", value: "MIT")
             }
         }
         .formStyle(.grouped)
-        .alert("Export Successful", isPresented: $showExportSuccess) {
-            Button("OK") {}
-        } message: {
-            Text("Configuration saved successfully.")
-        }
-        .alert("Import Failed", isPresented: $showImportError) {
-            Button("OK") {}
-        } message: {
-            Text(importErrorMessage)
-        }
     }
 
     // MARK: - Actions
@@ -210,7 +215,7 @@ struct SettingsView: View {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
-            // Silently handle — the toggle will still update the local setting
+            // Silently handle
         }
     }
 
@@ -219,15 +224,15 @@ struct SettingsView: View {
         panel.title = "Export SmartCharge Configuration"
         panel.nameFieldStringValue = "smartcharge-config.json"
         panel.allowedContentTypes = [.json]
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try configStore.exportToFile(url: url)
-            showExportSuccess = true
-        } catch {
-            importErrorMessage = error.localizedDescription
-            showImportError = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try configStore.exportToFile(url: url)
+                showExportSuccess = true
+            } catch {
+                importErrorMessage = error.localizedDescription
+                showImportError = true
+            }
         }
     }
 
@@ -236,17 +241,17 @@ struct SettingsView: View {
         panel.title = "Import SmartCharge Configuration"
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
-
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-
-        do {
-            try configStore.importFromFile(url: url)
-            startThreshold = Double(configStore.config.chargeStartThreshold)
-            stopThreshold = Double(configStore.config.chargeStopThreshold)
-            activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config imported from file")
-        } catch {
-            importErrorMessage = error.localizedDescription
-            showImportError = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try configStore.importFromFile(url: url)
+                startThreshold = Double(configStore.config.chargeStartThreshold)
+                stopThreshold = Double(configStore.config.chargeStopThreshold)
+                activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config imported from file")
+            } catch {
+                importErrorMessage = error.localizedDescription
+                showImportError = true
+            }
         }
     }
 }
@@ -272,7 +277,5 @@ private struct ThresholdSlider: View {
             Slider(value: $value, in: range, step: 1)
                 .tint(color)
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(label): \(Int(value)) percent")
     }
 }

@@ -11,28 +11,24 @@ struct MainWindow: View {
     @State private var showActivityLog = false
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                errorBanner
-                headerSection
-                Divider().padding(.horizontal)
-                batteryVisualization
-                Divider().padding(.horizontal)
-                statsGrid
-                Divider().padding(.horizontal)
-                statusSection
-                Divider().padding(.horizontal)
-                thresholdControls
-                Divider().padding(.horizontal)
-                activityLogSection
-                Spacer(minLength: 8)
-                footerSection
-            }
-            .padding()
+        VStack(spacing: 12) {
+            errorBanner
+            headerSection
+            Divider()
+            batteryVisualization
+            statsGrid
+            Divider()
+            statusSection
+            Divider()
+            thresholdControls
+            Divider()
+            activityLogSection
+            footerSection
         }
+        .padding(20)
+        .frame(width: 560)
+        .fixedSize(horizontal: true, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("SmartCharge main window")
     }
 
     // MARK: - Error Banner
@@ -50,16 +46,12 @@ struct MainWindow: View {
                     stateMachine.lastError = nil
                     helperProxy.lastError = nil
                 }
-                .buttonStyle(.borderless)
-                .foregroundStyle(.white.opacity(0.9))
+                .buttonStyle(.bordered)
             }
             .font(.callout)
             .foregroundStyle(.white)
             .padding(12)
             .background(Color.red.gradient, in: RoundedRectangle(cornerRadius: 10))
-            .padding(.bottom, 12)
-            .transition(.move(edge: .top).combined(with: .opacity))
-            .accessibilityLabel("Error: \(error)")
         }
     }
 
@@ -77,7 +69,6 @@ struct MainWindow: View {
             Spacer()
             statusBadge
         }
-        .padding(.bottom, 16)
     }
 
     private var statusBadge: some View {
@@ -85,14 +76,12 @@ struct MainWindow: View {
             Circle()
                 .fill(statusColor)
                 .frame(width: 10, height: 10)
-                .shadow(color: statusColor.opacity(0.5), radius: 4)
             Text(stateMachine.state.description)
                 .font(.subheadline.weight(.medium))
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
         .background(statusColor.opacity(0.12), in: Capsule())
-        .animation(.easeInOut(duration: 0.4), value: stateMachine.state)
         .accessibilityLabel("Charge state: \(stateMachine.state.description)")
     }
 
@@ -107,21 +96,16 @@ struct MainWindow: View {
 
     private var batteryVisualization: some View {
         BatteryShape(level: batteryMonitor.batteryState.level, config: configStore.config)
-            .frame(height: 110)
-            .padding(.vertical, 20)
-            .animation(.easeInOut(duration: 0.8), value: batteryMonitor.batteryState.level)
+            .frame(height: 100)
+            .padding(.vertical, 8)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel("Battery level \(batteryMonitor.batteryState.levelDescription)")
-            .accessibilityValue("Charge zone \(configStore.config.chargeStartThreshold) to \(configStore.config.chargeStopThreshold) percent")
     }
 
     // MARK: - Stats Grid
 
     private var statsGrid: some View {
-        LazyVGrid(columns: [
-            GridItem(.flexible()), GridItem(.flexible()),
-            GridItem(.flexible()), GridItem(.flexible())
-        ], spacing: 12) {
+        HStack(spacing: 10) {
             StatCard(
                 title: "Battery",
                 value: batteryMonitor.batteryState.levelDescription,
@@ -147,7 +131,6 @@ struct MainWindow: View {
                 color: healthColor
             )
         }
-        .padding(.vertical, 16)
     }
 
     private var batteryIcon: String {
@@ -177,12 +160,11 @@ struct MainWindow: View {
     // MARK: - Status
 
     private var statusSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Status")
                 .font(.headline)
-                .padding(.top, 12)
 
-            HStack(spacing: 24) {
+            HStack(spacing: 20) {
                 InfoRow(label: "Current Action", value: currentActionDescription)
                 if let time = batteryMonitor.batteryState.timeRemainingFormatted {
                     InfoRow(label: "Time Remaining", value: time)
@@ -192,14 +174,15 @@ struct MainWindow: View {
                 }
             }
 
-            if let cycles = batteryMonitor.batteryState.cycleCount {
-                HStack(spacing: 24) {
-                    InfoRow(label: "Cycle Count", value: "\(cycles)")
+            if batteryMonitor.batteryState.cycleCount != nil || batteryMonitor.batteryState.maxCapacity != nil {
+                HStack(spacing: 20) {
+                    if let cycles = batteryMonitor.batteryState.cycleCount {
+                        InfoRow(label: "Cycle Count", value: "\(cycles)")
+                    }
                     if let cap = batteryMonitor.batteryState.maxCapacity {
                         InfoRow(label: "Max Capacity", value: "\(cap)%")
                     }
                 }
-                .padding(.top, 4)
             }
 
             if !batteryMonitor.batteryState.isPluggedIn {
@@ -212,11 +195,8 @@ struct MainWindow: View {
                 }
                 .padding(10)
                 .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
-                .transition(.opacity)
-                .animation(.easeInOut, value: batteryMonitor.batteryState.isPluggedIn)
             }
         }
-        .padding(.bottom, 12)
     }
 
     private var currentActionDescription: String {
@@ -238,12 +218,11 @@ struct MainWindow: View {
     // MARK: - Threshold Controls
 
     private var thresholdControls: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 8) {
             Text("Charge Thresholds")
                 .font(.headline)
-                .padding(.top, 12)
 
-            HStack(spacing: 24) {
+            HStack(spacing: 20) {
                 ThresholdBadge(
                     label: "Start At",
                     value: configStore.config.chargeStartThreshold,
@@ -257,66 +236,30 @@ struct MainWindow: View {
                     icon: "bolt.slash.fill"
                 )
                 Spacer()
-                Button {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    NSApp.activate(ignoringOtherApps: true)
-                } label: {
-                    Label("Settings", systemImage: "gearshape")
+                Button("Settings") {
+                    if #available(macOS 14.0, *) {
+                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    } else {
+                        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
+                    }
                 }
                 .buttonStyle(.borderedProminent)
             }
         }
-        .padding(.bottom, 8)
     }
 
     // MARK: - Activity Log
 
     private var activityLogSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            DisclosureGroup(isExpanded: $showActivityLog) {
-                if activityLogger.events.isEmpty {
-                    Text("No activity recorded yet.")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
-                        .padding(.vertical, 8)
-                } else {
-                    VStack(spacing: 0) {
-                        ForEach(activityLogger.events.prefix(25)) { event in
-                            HStack(spacing: 10) {
-                                Image(systemName: event.iconName)
-                                    .foregroundStyle(eventColor(event))
-                                    .frame(width: 20)
-                                VStack(alignment: .leading, spacing: 1) {
-                                    Text(event.kind.rawValue)
-                                        .font(.callout.weight(.medium))
-                                    Text(event.detail)
-                                        .font(.caption)
-                                        .foregroundStyle(.secondary)
-                                        .lineLimit(1)
-                                }
-                                Spacer()
-                                VStack(alignment: .trailing, spacing: 1) {
-                                    Text(event.date.formatted(date: .abbreviated, time: .shortened))
-                                        .font(.caption2)
-                                        .foregroundStyle(.tertiary)
-                                    if event.batteryLevel >= 0 {
-                                        Text("\(event.batteryLevel)%")
-                                            .font(.caption2.monospacedDigit())
-                                            .foregroundStyle(.secondary)
-                                    }
-                                }
-                            }
-                            .padding(.vertical, 6)
-                            .accessibilityElement(children: .combine)
-
-                            if event.id != activityLogger.events.prefix(25).last?.id {
-                                Divider()
-                            }
-                        }
-                    }
+        VStack(alignment: .leading, spacing: 6) {
+            Button {
+                withAnimation(.easeInOut(duration: 0.2)) {
+                    showActivityLog.toggle()
                 }
             } label: {
                 HStack {
+                    Image(systemName: showActivityLog ? "chevron.down" : "chevron.right")
+                        .frame(width: 14)
                     Text("Activity Log")
                         .font(.headline)
                     Spacer()
@@ -324,7 +267,51 @@ struct MainWindow: View {
                         .font(.caption)
                         .foregroundStyle(.tertiary)
                 }
-                .padding(.top, 12)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+
+            if showActivityLog {
+                if activityLogger.events.isEmpty {
+                    Text("No activity recorded yet.")
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                        .padding(.vertical, 4)
+                } else {
+                    VStack(spacing: 0) {
+                        ForEach(activityLogger.events.prefix(20)) { event in
+                            VStack(spacing: 0) {
+                                HStack(spacing: 10) {
+                                    Image(systemName: event.iconName)
+                                        .foregroundStyle(eventColor(event))
+                                        .frame(width: 18)
+                                    VStack(alignment: .leading, spacing: 1) {
+                                        Text(event.kind.rawValue)
+                                            .font(.callout.weight(.medium))
+                                        Text(event.detail)
+                                            .font(.caption)
+                                            .foregroundStyle(.secondary)
+                                            .lineLimit(1)
+                                    }
+                                    Spacer()
+                                    VStack(alignment: .trailing, spacing: 1) {
+                                        Text(event.date.formatted(date: .abbreviated, time: .shortened))
+                                            .font(.caption2)
+                                            .foregroundStyle(.tertiary)
+                                        if event.batteryLevel >= 0 {
+                                            Text("\(event.batteryLevel)%")
+                                                .font(.caption2.monospacedDigit())
+                                                .foregroundStyle(.secondary)
+                                        }
+                                    }
+                                }
+                                .padding(.vertical, 5)
+                                Divider()
+                            }
+                        }
+                    }
+                    .padding(.leading, 4)
+                }
             }
         }
     }
@@ -348,7 +335,7 @@ struct MainWindow: View {
                 Button("Update Available: v\(newVersion)") {
                     NSWorkspace.shared.open(updateChecker.releaseURL)
                 }
-                .foregroundStyle(.blue)
+                .buttonStyle(.link)
             } else {
                 Text("SmartCharge v\(updateChecker.appVersion)")
                     .font(.caption)
@@ -366,11 +353,11 @@ struct MainWindow: View {
             Button("Check for Updates") {
                 updateChecker.checkForUpdate()
             }
-            .buttonStyle(.borderless)
-            .font(.caption)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .disabled(updateChecker.isChecking)
         }
-        .padding(.top, 8)
+        .padding(.top, 4)
     }
 }
 
@@ -420,7 +407,7 @@ private struct BatteryShape: View {
                     .offset(x: stopX)
 
                 Text("\(max(0, level))%")
-                    .font(.system(size: 36, weight: .bold, design: .rounded))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
                     .foregroundStyle(.primary)
                     .frame(width: bodyWidth, height: height)
 
@@ -435,6 +422,7 @@ private struct BatteryShape: View {
                     .offset(x: stopX - 10, y: height / 2 + 12)
             }
         }
+        .allowsHitTesting(false)
     }
 
     private var fillGradient: LinearGradient {
@@ -472,7 +460,6 @@ private struct StatCard: View {
         .padding(.vertical, 12)
         .padding(.horizontal, 4)
         .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-        .shadow(color: .black.opacity(0.04), radius: 3, y: 2)
         .accessibilityElement(children: .combine)
     }
 }
@@ -491,7 +478,6 @@ private struct InfoRow: View {
             Text(value)
                 .font(.callout.weight(.medium))
         }
-        .accessibilityElement(children: .combine)
     }
 }
 

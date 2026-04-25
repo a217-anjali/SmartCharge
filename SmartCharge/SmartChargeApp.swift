@@ -31,7 +31,7 @@ struct SmartChargeApp: App {
     @StateObject private var helperProxy: HelperProxy
     @StateObject private var stateMachine: ChargeStateMachine
     @StateObject private var updateChecker = UpdateChecker()
-    @StateObject private var activityLogger = ActivityLogger()
+    @StateObject private var activityLogger: ActivityLogger
     @StateObject private var coordinator = AppCoordinator()
 
     init() {
@@ -47,8 +47,7 @@ struct SmartChargeApp: App {
     }
 
     var body: some Scene {
-        // Main window
-        WindowGroup {
+        Window("SmartCharge", id: "main") {
             MainWindow(
                 batteryMonitor: batteryMonitor,
                 stateMachine: stateMachine,
@@ -67,9 +66,8 @@ struct SmartChargeApp: App {
                 activityLogger.log(.appLaunched, batteryLevel: batteryMonitor.batteryState.level,
                     detail: "SmartCharge v\(updateChecker.appVersion) started")
             }
-            .frame(minWidth: 560, minHeight: 640)
         }
-        .windowResizability(.contentSize)
+        .defaultSize(width: 560, height: 680)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -126,7 +124,6 @@ struct SmartChargeApp: App {
             }
         }
 
-        // System menu bar icon (always visible)
         MenuBarExtra {
             MenuBarView(
                 batteryMonitor: batteryMonitor,
@@ -138,7 +135,6 @@ struct SmartChargeApp: App {
             Label(batteryMonitor.batteryState.menuBarTitle, systemImage: "bolt.batteryblock.fill")
         }
 
-        // Settings window (Cmd+,)
         Settings {
             SettingsView(configStore: configStore, activityLogger: activityLogger)
         }
