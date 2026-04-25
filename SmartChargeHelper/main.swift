@@ -15,7 +15,7 @@ final class HelperToolDelegate: NSObject, NSXPCListenerDelegate, HelperProtocol 
 
     deinit {
         if smcReady {
-            smc.enableCharging()
+            _ = smc.enableCharging()
             smc.close()
         }
     }

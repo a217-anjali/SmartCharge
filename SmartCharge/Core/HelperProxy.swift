@@ -8,7 +8,7 @@ final class HelperProxy: ObservableObject {
     private var connection: NSXPCConnection?
 
     func installHelper() {
-        let service = SMAppService.loginItem(forBundleIdentifier: HelperConstants.machServiceName)
+        let service = SMAppService.loginItem(identifier: HelperConstants.machServiceName)
         do {
             try service.register()
             isHelperInstalled = true

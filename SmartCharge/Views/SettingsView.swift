@@ -35,7 +35,7 @@ struct SettingsView: View {
             Section("General") {
                 Toggle("Show notifications", isOn: $configStore.config.notificationsEnabled)
                 Toggle("Launch at login", isOn: $configStore.config.launchAtLogin)
-                    .onChange(of: configStore.config.launchAtLogin) { _, newValue in
+                    .onChange(of: configStore.config.launchAtLogin) { newValue in
                         setLaunchAtLogin(newValue)
                     }
             }
