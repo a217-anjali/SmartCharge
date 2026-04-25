@@ -2,8 +2,6 @@ import SwiftUI
 import Combine
 import os
 
-// MARK: - App Delegate
-
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "AppDelegate")
     var onTerminate: (() -> Void)?
@@ -21,8 +19,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         Self.logger.info("SmartCharge launched")
     }
 }
-
-// MARK: - App Entry Point
 
 @main
 struct SmartChargeApp: App {
@@ -51,7 +47,7 @@ struct SmartChargeApp: App {
     }
 
     var body: some Scene {
-        Window("SmartCharge", id: "main") {
+        WindowGroup {
             MainWindow(
                 batteryMonitor: batteryMonitor,
                 stateMachine: stateMachine,
@@ -78,7 +74,7 @@ struct SmartChargeApp: App {
                     detail: "SmartCharge v\(updateChecker.appVersion) started")
             }
         }
-        .defaultSize(width: 560, height: 680)
+        .defaultSize(width: 560, height: 700)
         .commands {
             CommandGroup(replacing: .newItem) { }
 
@@ -98,7 +94,6 @@ struct SmartChargeApp: App {
                     updateChecker.checkForUpdate()
                 }
                 .disabled(updateChecker.isChecking)
-
                 Divider()
             }
 
@@ -107,12 +102,6 @@ struct SmartChargeApp: App {
                     batteryMonitor.refresh()
                 }
                 .keyboardShortcut("r", modifiers: .command)
-
-                Divider()
-
-                Button("Clear Activity Log") {
-                    activityLogger.clearHistory()
-                }
             }
 
             CommandGroup(replacing: .help) {
@@ -145,14 +134,8 @@ struct SmartChargeApp: App {
         } label: {
             Label(batteryMonitor.batteryState.menuBarTitle, systemImage: "bolt.batteryblock.fill")
         }
-
-        Settings {
-            SettingsView(configStore: configStore, activityLogger: activityLogger)
-        }
     }
 }
-
-// MARK: - App Coordinator
 
 @MainActor
 final class AppCoordinator: ObservableObject {
@@ -167,7 +150,6 @@ final class AppCoordinator: ObservableObject {
     ) {
         guard !started else { return }
         started = true
-
         batteryMonitor.start()
 
         batteryMonitor.$batteryState
@@ -177,6 +159,6 @@ final class AppCoordinator: ObservableObject {
             }
             .store(in: &cancellables)
 
-        Self.logger.info("Coordinator started — monitoring battery and config changes")
+        Self.logger.info("Coordinator started")
     }
 }

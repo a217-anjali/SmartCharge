@@ -8,9 +8,7 @@ struct MenuBarView: View {
 
     var body: some View {
         Group {
-            Text("SmartCharge")
-                .font(.headline)
-
+            Text("SmartCharge").font(.headline)
             Divider()
 
             LabeledItem("Battery", value: batteryMonitor.batteryState.levelDescription)
@@ -22,11 +20,9 @@ struct MenuBarView: View {
             if let health = batteryMonitor.batteryState.batteryHealth {
                 LabeledItem("Health", value: health)
             }
-
             if let cycles = batteryMonitor.batteryState.cycleCount {
                 LabeledItem("Cycles", value: "\(cycles)")
             }
-
             if let lastTransition = stateMachine.lastTransition {
                 LabeledItem("Last Change", value: lastTransition.formatted(date: .omitted, time: .shortened))
             }
@@ -40,7 +36,7 @@ struct MenuBarView: View {
 
             Divider()
 
-            Button("Open SmartCharge Window") {
+            Button("Open SmartCharge") {
                 NSApp.activate(ignoringOtherApps: true)
             }
 
@@ -48,23 +44,12 @@ struct MenuBarView: View {
                 updateChecker.checkForUpdate()
             }
 
-            Button("Settings...") {
-                if #available(macOS 14.0, *) {
-                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                } else {
-                    NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                }
-                NSApp.activate(ignoringOtherApps: true)
-            }
-            .keyboardShortcut(",", modifiers: .command)
-
             Divider()
 
             Button("Quit SmartCharge") {
                 stateMachine.forceDisableCharging()
                 NSApp.terminate(nil)
             }
-            .keyboardShortcut("q", modifiers: .command)
         }
     }
 }
@@ -80,11 +65,9 @@ private struct LabeledItem: View {
 
     var body: some View {
         HStack {
-            Text(label)
-                .foregroundStyle(.secondary)
+            Text(label).foregroundStyle(.secondary)
             Spacer()
-            Text(value)
-                .fontWeight(.medium)
+            Text(value).fontWeight(.medium)
         }
         .font(.system(.body, design: .rounded))
     }

@@ -9,6 +9,7 @@ struct MainWindow: View {
     @ObservedObject var activityLogger: ActivityLogger
 
     @State private var showActivityLog = false
+    @State private var showSettings = false
 
     var body: some View {
         VStack(spacing: 12) {
@@ -28,14 +29,16 @@ struct MainWindow: View {
         .padding(20)
         .frame(width: 560)
         .background(Color(nsColor: .windowBackgroundColor))
+        .sheet(isPresented: $showSettings) {
+            SettingsView(configStore: configStore, activityLogger: activityLogger, isPresented: $showSettings)
+        }
     }
 
     // MARK: - Error Banner
 
     @ViewBuilder
     private var errorBanner: some View {
-        let error = stateMachine.lastError ?? helperProxy.lastError
-        if let error = error {
+        if let error = stateMachine.lastError ?? helperProxy.lastError {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                 Text(error)
@@ -46,6 +49,7 @@ struct MainWindow: View {
                     helperProxy.lastError = nil
                 }
                 .buttonStyle(.bordered)
+                .tint(.white)
             }
             .font(.callout)
             .foregroundStyle(.white)
@@ -66,29 +70,21 @@ struct MainWindow: View {
                     .foregroundStyle(.secondary)
             }
             Spacer()
-            statusBadge
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(statusColor)
+                    .frame(width: 10, height: 10)
+                Text(stateMachine.state.description)
+                    .font(.subheadline.weight(.medium))
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 8)
+            .background(statusColor.opacity(0.12), in: Capsule())
         }
-    }
-
-    private var statusBadge: some View {
-        HStack(spacing: 6) {
-            Circle()
-                .fill(statusColor)
-                .frame(width: 10, height: 10)
-            Text(stateMachine.state.description)
-                .font(.subheadline.weight(.medium))
-        }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(statusColor.opacity(0.12), in: Capsule())
-        .accessibilityLabel("Charge state: \(stateMachine.state.description)")
     }
 
     private var statusColor: Color {
-        switch stateMachine.state {
-        case .charging: return .green
-        case .waiting: return .orange
-        }
+        stateMachine.state == .charging ? .green : .orange
     }
 
     // MARK: - Battery Visualization
@@ -96,39 +92,25 @@ struct MainWindow: View {
     private var batteryVisualization: some View {
         BatteryShape(level: batteryMonitor.batteryState.level, config: configStore.config)
             .frame(height: 100)
-            .padding(.vertical, 8)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel("Battery level \(batteryMonitor.batteryState.levelDescription)")
+            .padding(.vertical, 4)
+            .allowsHitTesting(false)
     }
 
     // MARK: - Stats Grid
 
     private var statsGrid: some View {
         HStack(spacing: 10) {
-            StatCard(
-                title: "Battery",
-                value: batteryMonitor.batteryState.levelDescription,
-                icon: batteryIcon,
-                color: batteryLevelColor
-            )
-            StatCard(
-                title: "Power",
-                value: batteryMonitor.batteryState.isPluggedIn ? "Plugged In" : "Battery",
-                icon: batteryMonitor.batteryState.isPluggedIn ? "powerplug.fill" : "bolt.slash",
-                color: batteryMonitor.batteryState.isPluggedIn ? .green : .gray
-            )
-            StatCard(
-                title: "Control",
-                value: stateMachine.state.rawValue,
-                icon: stateMachine.state == .charging ? "bolt.fill" : "pause.circle",
-                color: statusColor
-            )
-            StatCard(
-                title: "Health",
-                value: batteryMonitor.batteryState.healthDescription,
-                icon: "heart.fill",
-                color: healthColor
-            )
+            StatCard(title: "Battery", value: batteryMonitor.batteryState.levelDescription,
+                     icon: batteryIcon, color: batteryLevelColor)
+            StatCard(title: "Power",
+                     value: batteryMonitor.batteryState.isPluggedIn ? "Plugged In" : "Battery",
+                     icon: batteryMonitor.batteryState.isPluggedIn ? "powerplug.fill" : "bolt.slash",
+                     color: batteryMonitor.batteryState.isPluggedIn ? .green : .gray)
+            StatCard(title: "Control", value: stateMachine.state.rawValue,
+                     icon: stateMachine.state == .charging ? "bolt.fill" : "pause.circle",
+                     color: statusColor)
+            StatCard(title: "Health", value: batteryMonitor.batteryState.healthDescription,
+                     icon: "heart.fill", color: healthColor)
         }
     }
 
@@ -160,8 +142,7 @@ struct MainWindow: View {
 
     private var statusSection: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Status")
-                .font(.headline)
+            Text("Status").font(.headline)
 
             HStack(spacing: 20) {
                 InfoRow(label: "Current Action", value: currentActionDescription)
@@ -186,11 +167,9 @@ struct MainWindow: View {
 
             if !batteryMonitor.batteryState.isPluggedIn {
                 HStack(spacing: 8) {
-                    Image(systemName: "info.circle.fill")
-                        .foregroundStyle(.blue)
+                    Image(systemName: "info.circle.fill").foregroundStyle(.blue)
                     Text("Plug in your charger — SmartCharge manages charging automatically while plugged in.")
-                        .font(.callout)
-                        .foregroundStyle(.secondary)
+                        .font(.callout).foregroundStyle(.secondary)
                 }
                 .padding(10)
                 .background(Color.blue.opacity(0.08), in: RoundedRectangle(cornerRadius: 8))
@@ -200,9 +179,7 @@ struct MainWindow: View {
 
     private var currentActionDescription: String {
         let level = batteryMonitor.batteryState.level
-        guard batteryMonitor.batteryState.isPluggedIn else {
-            return "Not plugged in"
-        }
+        guard batteryMonitor.batteryState.isPluggedIn else { return "Not plugged in" }
         switch stateMachine.state {
         case .charging:
             return "Charging until \(configStore.config.chargeStopThreshold)%"
@@ -218,31 +195,19 @@ struct MainWindow: View {
 
     private var thresholdControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("Charge Thresholds")
-                .font(.headline)
+            Text("Charge Thresholds").font(.headline)
 
             HStack(spacing: 20) {
-                ThresholdBadge(
-                    label: "Start At",
-                    value: configStore.config.chargeStartThreshold,
-                    color: .orange,
-                    icon: "bolt.fill"
-                )
-                ThresholdBadge(
-                    label: "Stop At",
-                    value: configStore.config.chargeStopThreshold,
-                    color: .green,
-                    icon: "bolt.slash.fill"
-                )
+                ThresholdBadge(label: "Start At", value: configStore.config.chargeStartThreshold,
+                               color: .orange, icon: "bolt.fill")
+                ThresholdBadge(label: "Stop At", value: configStore.config.chargeStopThreshold,
+                               color: .green, icon: "bolt.slash.fill")
                 Spacer()
                 Button("Settings") {
-                    if #available(macOS 14.0, *) {
-                        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-                    } else {
-                        NSApp.sendAction(Selector(("showPreferencesWindow:")), to: nil, from: nil)
-                    }
+                    showSettings = true
                 }
                 .buttonStyle(.borderedProminent)
+                .controlSize(.regular)
             }
         }
     }
@@ -252,19 +217,15 @@ struct MainWindow: View {
     private var activityLogSection: some View {
         VStack(alignment: .leading, spacing: 6) {
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
-                    showActivityLog.toggle()
-                }
+                showActivityLog.toggle()
             } label: {
                 HStack {
                     Image(systemName: showActivityLog ? "chevron.down" : "chevron.right")
                         .frame(width: 14)
-                    Text("Activity Log")
-                        .font(.headline)
+                    Text("Activity Log").font(.headline)
                     Spacer()
                     Text("\(activityLogger.events.count) events")
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
+                        .font(.caption).foregroundStyle(.tertiary)
                 }
                 .contentShape(Rectangle())
             }
@@ -273,8 +234,7 @@ struct MainWindow: View {
             if showActivityLog {
                 if activityLogger.events.isEmpty {
                     Text("No activity recorded yet.")
-                        .font(.callout)
-                        .foregroundStyle(.tertiary)
+                        .font(.callout).foregroundStyle(.tertiary)
                         .padding(.vertical, 4)
                 } else {
                     VStack(spacing: 0) {
@@ -282,25 +242,19 @@ struct MainWindow: View {
                             VStack(spacing: 0) {
                                 HStack(spacing: 10) {
                                     Image(systemName: event.iconName)
-                                        .foregroundStyle(eventColor(event))
+                                        .foregroundStyle(event.color)
                                         .frame(width: 18)
                                     VStack(alignment: .leading, spacing: 1) {
-                                        Text(event.kind.rawValue)
-                                            .font(.callout.weight(.medium))
-                                        Text(event.detail)
-                                            .font(.caption)
-                                            .foregroundStyle(.secondary)
-                                            .lineLimit(1)
+                                        Text(event.kind.rawValue).font(.callout.weight(.medium))
+                                        Text(event.detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                                     }
                                     Spacer()
                                     VStack(alignment: .trailing, spacing: 1) {
                                         Text(event.date.formatted(date: .abbreviated, time: .shortened))
-                                            .font(.caption2)
-                                            .foregroundStyle(.tertiary)
+                                            .font(.caption2).foregroundStyle(.tertiary)
                                         if event.batteryLevel >= 0 {
                                             Text("\(event.batteryLevel)%")
-                                                .font(.caption2.monospacedDigit())
-                                                .foregroundStyle(.secondary)
+                                                .font(.caption2.monospacedDigit()).foregroundStyle(.secondary)
                                         }
                                     }
                                 }
@@ -315,17 +269,6 @@ struct MainWindow: View {
         }
     }
 
-    private func eventColor(_ event: ChargeEvent) -> Color {
-        switch event.iconColor {
-        case "green": return .green
-        case "orange": return .orange
-        case "blue": return .blue
-        case "red": return .red
-        case "purple": return .purple
-        default: return .gray
-        }
-    }
-
     // MARK: - Footer
 
     private var footerSection: some View {
@@ -337,18 +280,12 @@ struct MainWindow: View {
                 .buttonStyle(.link)
             } else {
                 Text("SmartCharge v\(updateChecker.appVersion)")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+                    .font(.caption).foregroundStyle(.tertiary)
             }
-
             Spacer()
-
             if updateChecker.isChecking {
-                ProgressView()
-                    .controlSize(.small)
-                    .padding(.trailing, 4)
+                ProgressView().controlSize(.small).padding(.trailing, 4)
             }
-
             Button("Check for Updates") {
                 updateChecker.checkForUpdate()
             }
@@ -360,7 +297,7 @@ struct MainWindow: View {
     }
 }
 
-// MARK: - Battery Shape Visualization
+// MARK: - Subviews
 
 private struct BatteryShape: View {
     let level: Int
@@ -368,141 +305,84 @@ private struct BatteryShape: View {
 
     var body: some View {
         GeometryReader { geo in
-            let width = geo.size.width
-            let height = geo.size.height
-            let bodyWidth = width - 20
-            let fillWidth = max(0, bodyWidth * CGFloat(max(0, level)) / 100.0)
-            let startX = bodyWidth * CGFloat(config.chargeStartThreshold) / 100.0
-            let stopX = bodyWidth * CGFloat(config.chargeStopThreshold) / 100.0
+            let w = geo.size.width - 20
+            let h = geo.size.height
+            let fill = max(0, w * CGFloat(max(0, level)) / 100)
+            let startX = w * CGFloat(config.chargeStartThreshold) / 100
+            let stopX = w * CGFloat(config.chargeStopThreshold) / 100
 
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 12)
                     .stroke(Color.primary.opacity(0.3), lineWidth: 2)
-                    .frame(width: bodyWidth, height: height)
-
+                    .frame(width: w, height: h)
                 RoundedRectangle(cornerRadius: 4)
                     .fill(Color.primary.opacity(0.3))
-                    .frame(width: 8, height: height * 0.4)
-                    .offset(x: bodyWidth + 2)
-
+                    .frame(width: 8, height: h * 0.4)
+                    .offset(x: w + 2)
                 Rectangle()
                     .fill(Color.green.opacity(0.08))
-                    .frame(width: stopX - startX, height: height - 4)
+                    .frame(width: stopX - startX, height: h - 4)
                     .offset(x: startX + 2)
-
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(fillGradient)
-                    .frame(width: max(0, fillWidth - 4), height: height - 4)
+                    .fill(fillColor)
+                    .frame(width: max(0, fill - 4), height: h - 4)
                     .offset(x: 2)
-
-                Rectangle()
-                    .fill(Color.orange)
-                    .frame(width: 2, height: height)
-                    .offset(x: startX)
-
-                Rectangle()
-                    .fill(Color.green)
-                    .frame(width: 2, height: height)
-                    .offset(x: stopX)
-
+                Rectangle().fill(Color.orange).frame(width: 2, height: h).offset(x: startX)
+                Rectangle().fill(Color.green).frame(width: 2, height: h).offset(x: stopX)
                 Text("\(max(0, level))%")
                     .font(.system(size: 34, weight: .bold, design: .rounded))
-                    .foregroundStyle(.primary)
-                    .frame(width: bodyWidth, height: height)
-
+                    .frame(width: w, height: h)
                 Text("\(config.chargeStartThreshold)%")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.orange)
-                    .offset(x: startX - 10, y: height / 2 + 12)
-
+                    .font(.system(size: 10, weight: .medium)).foregroundStyle(.orange)
+                    .offset(x: startX - 10, y: h / 2 + 12)
                 Text("\(config.chargeStopThreshold)%")
-                    .font(.system(size: 10, weight: .medium))
-                    .foregroundStyle(.green)
-                    .offset(x: stopX - 10, y: height / 2 + 12)
+                    .font(.system(size: 10, weight: .medium)).foregroundStyle(.green)
+                    .offset(x: stopX - 10, y: h / 2 + 12)
             }
         }
-        .allowsHitTesting(false)
     }
 
-    private var fillGradient: LinearGradient {
-        let color: Color = level <= 20 ? .red : (level <= 50 ? .orange : .green)
-        return LinearGradient(
-            colors: [color.opacity(0.7), color.opacity(0.4)],
-            startPoint: .leading,
-            endPoint: .trailing
-        )
+    private var fillColor: LinearGradient {
+        let c: Color = level <= 20 ? .red : (level <= 50 ? .orange : .green)
+        return LinearGradient(colors: [c.opacity(0.7), c.opacity(0.4)], startPoint: .leading, endPoint: .trailing)
     }
 }
-
-// MARK: - Stat Card
 
 private struct StatCard: View {
-    let title: String
-    let value: String
-    let icon: String
-    let color: Color
-
+    let title: String; let value: String; let icon: String; let color: Color
     var body: some View {
         VStack(spacing: 6) {
-            Image(systemName: icon)
-                .font(.title3)
-                .foregroundStyle(color)
-            Text(value)
-                .font(.system(.callout, design: .rounded, weight: .semibold))
-                .lineLimit(1)
-                .minimumScaleFactor(0.7)
-            Text(title)
-                .font(.caption2)
-                .foregroundStyle(.secondary)
+            Image(systemName: icon).font(.title3).foregroundStyle(color)
+            Text(value).font(.system(.callout, design: .rounded, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.7)
+            Text(title).font(.caption2).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 12)
-        .padding(.horizontal, 4)
+        .padding(.vertical, 12).padding(.horizontal, 4)
         .background(color.opacity(0.06), in: RoundedRectangle(cornerRadius: 12))
-        .accessibilityElement(children: .combine)
     }
 }
-
-// MARK: - Info Row
 
 private struct InfoRow: View {
-    let label: String
-    let value: String
-
+    let label: String; let value: String
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text(label)
-                .font(.caption)
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(.callout.weight(.medium))
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(value).font(.callout.weight(.medium))
         }
     }
 }
 
-// MARK: - Threshold Badge
-
 private struct ThresholdBadge: View {
-    let label: String
-    let value: Int
-    let color: Color
-    let icon: String
-
+    let label: String; let value: Int; let color: Color; let icon: String
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: icon)
-                .foregroundStyle(color)
+            Image(systemName: icon).foregroundStyle(color)
             VStack(alignment: .leading, spacing: 1) {
-                Text(label)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                Text("\(value)%")
-                    .font(.body.weight(.semibold).monospacedDigit())
+                Text(label).font(.caption).foregroundStyle(.secondary)
+                Text("\(value)%").font(.body.weight(.semibold).monospacedDigit())
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
+        .padding(.horizontal, 14).padding(.vertical, 8)
         .background(color.opacity(0.08), in: RoundedRectangle(cornerRadius: 10))
-        .accessibilityLabel("\(label): \(value) percent")
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 struct ChargeEvent: Identifiable, Codable, Equatable {
     let id: UUID
@@ -35,14 +36,14 @@ struct ChargeEvent: Identifiable, Codable, Equatable {
         }
     }
 
-    var iconColor: String {
+    var color: SwiftUI.Color {
         switch kind {
-        case .chargingStarted: return "green"
-        case .chargingStopped: return "orange"
-        case .appLaunched: return "blue"
-        case .appTerminated: return "gray"
-        case .helperError: return "red"
-        case .configChanged: return "purple"
+        case .chargingStarted: return .green
+        case .chargingStopped: return .orange
+        case .appLaunched: return .blue
+        case .appTerminated: return .gray
+        case .helperError: return .red
+        case .configChanged: return .purple
         }
     }
 }
