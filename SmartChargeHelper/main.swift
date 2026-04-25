@@ -87,12 +87,7 @@ listener.resume()
 signal(SIGTERM, SIG_IGN)
 let sigTermSource = DispatchSource.makeSignalSource(signal: SIGTERM, queue: .main)
 sigTermSource.setEventHandler {
-    // Re-enable charging on shutdown so the user is never stuck
-    let smc = SMCKit()
-    if smc.open() {
-        _ = smc.enableCharging()
-        smc.close()
-    }
+    delegate.enableCharging { _, _ in }
     exit(0)
 }
 sigTermSource.resume()

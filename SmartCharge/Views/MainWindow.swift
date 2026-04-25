@@ -27,7 +27,6 @@ struct MainWindow: View {
         }
         .padding(20)
         .frame(width: 560)
-        .fixedSize(horizontal: true, vertical: true)
         .background(Color(nsColor: .windowBackgroundColor))
     }
 

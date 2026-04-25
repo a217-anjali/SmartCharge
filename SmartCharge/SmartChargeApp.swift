@@ -6,13 +6,15 @@ import os
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "AppDelegate")
+    var onTerminate: (() -> Void)?
 
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        Self.logger.info("App terminating — ensuring charging is re-enabled")
+        Self.logger.info("App terminating")
+        onTerminate?()
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -33,6 +35,8 @@ struct SmartChargeApp: App {
     @StateObject private var updateChecker = UpdateChecker()
     @StateObject private var activityLogger: ActivityLogger
     @StateObject private var coordinator = AppCoordinator()
+
+    @State private var hasAppeared = false
 
     init() {
         let nm = NotificationManager()
@@ -57,6 +61,13 @@ struct SmartChargeApp: App {
                 activityLogger: activityLogger
             )
             .onAppear {
+                guard !hasAppeared else { return }
+                hasAppeared = true
+
+                appDelegate.onTerminate = { [weak sm = stateMachine] in
+                    sm?.forceDisableCharging()
+                }
+
                 coordinator.start(
                     batteryMonitor: batteryMonitor,
                     stateMachine: stateMachine,
@@ -146,6 +157,7 @@ struct SmartChargeApp: App {
 @MainActor
 final class AppCoordinator: ObservableObject {
     private var cancellables = Set<AnyCancellable>()
+    private var started = false
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "Coordinator")
 
     func start(
@@ -153,6 +165,9 @@ final class AppCoordinator: ObservableObject {
         stateMachine: ChargeStateMachine,
         configStore: ChargeConfigStore
     ) {
+        guard !started else { return }
+        started = true
+
         batteryMonitor.start()
 
         batteryMonitor.$batteryState

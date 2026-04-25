@@ -2,6 +2,24 @@ import SwiftUI
 import ServiceManagement
 import UniformTypeIdentifiers
 
+struct ConfigDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.json] }
+    var data: Data
+
+    init(data: Data) { self.data = data }
+
+    init(configuration: ReadConfiguration) throws {
+        guard let fileData = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = fileData
+    }
+
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        FileWrapper(regularFileWithContents: data)
+    }
+}
+
 struct SettingsView: View {
     @ObservedObject var configStore: ChargeConfigStore
     @ObservedObject var activityLogger: ActivityLogger
@@ -12,6 +30,9 @@ struct SettingsView: View {
     @State private var showExportSuccess = false
     @State private var showImportError = false
     @State private var importErrorMessage = ""
+    @State private var showExporter = false
+    @State private var showImporter = false
+    @State private var exportDocument: ConfigDocument?
 
     init(configStore: ChargeConfigStore, activityLogger: ActivityLogger) {
         self.configStore = configStore
@@ -35,7 +56,7 @@ struct SettingsView: View {
         .alert("Invalid Thresholds", isPresented: $showInvalidAlert) {
             Button("OK", role: .cancel) {}
         } message: {
-            Text("Start must be at least 10% below stop.\n\nStart range: 5–50%\nStop range: 50–100%")
+            Text("Start must be at least 10% below stop.\n\nStart range: 5-50%\nStop range: 50-100%")
         }
         .alert("Reset to Defaults?", isPresented: $showResetAlert) {
             Button("Reset", role: .destructive) {
@@ -46,7 +67,7 @@ struct SettingsView: View {
             }
             Button("Cancel", role: .cancel) {}
         } message: {
-            Text("This will reset all charge thresholds to their default values (20%–85%).")
+            Text("This will reset all charge thresholds to their default values (20%-85%).")
         }
         .alert("Export Successful", isPresented: $showExportSuccess) {
             Button("OK", role: .cancel) {}
@@ -55,6 +76,44 @@ struct SettingsView: View {
             Button("OK", role: .cancel) {}
         } message: {
             Text(importErrorMessage)
+        }
+        .fileExporter(
+            isPresented: $showExporter,
+            document: exportDocument,
+            contentType: .json,
+            defaultFilename: "smartcharge-config.json"
+        ) { result in
+            switch result {
+            case .success:
+                showExportSuccess = true
+            case .failure(let error):
+                importErrorMessage = error.localizedDescription
+                showImportError = true
+            }
+        }
+        .fileImporter(
+            isPresented: $showImporter,
+            allowedContentTypes: [.json],
+            allowsMultipleSelection: false
+        ) { result in
+            switch result {
+            case .success(let urls):
+                guard let url = urls.first else { return }
+                let accessing = url.startAccessingSecurityScopedResource()
+                defer { if accessing { url.stopAccessingSecurityScopedResource() } }
+                do {
+                    try configStore.importFromFile(url: url)
+                    startThreshold = Double(configStore.config.chargeStartThreshold)
+                    stopThreshold = Double(configStore.config.chargeStopThreshold)
+                    activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config imported from file")
+                } catch {
+                    importErrorMessage = error.localizedDescription
+                    showImportError = true
+                }
+            case .failure(let error):
+                importErrorMessage = error.localizedDescription
+                showImportError = true
+            }
         }
     }
 
@@ -143,7 +202,10 @@ struct SettingsView: View {
             Section("Configuration") {
                 HStack {
                     Button("Export Config...") {
-                        exportConfig()
+                        if let data = configStore.config.toJSON() {
+                            exportDocument = ConfigDocument(data: data)
+                            showExporter = true
+                        }
                     }
                     .buttonStyle(.bordered)
                     Spacer()
@@ -154,7 +216,7 @@ struct SettingsView: View {
 
                 HStack {
                     Button("Import Config...") {
-                        importConfig()
+                        showImporter = true
                     }
                     .buttonStyle(.bordered)
                     Spacer()
@@ -204,7 +266,7 @@ struct SettingsView: View {
         }
 
         configStore.config = candidate
-        activityLogger.log(.configChanged, batteryLevel: -1, detail: "Thresholds set to \(start)%–\(stop)%")
+        activityLogger.log(.configChanged, batteryLevel: -1, detail: "Thresholds set to \(start)%-\(stop)%")
     }
 
     private func setLaunchAtLogin(_ enabled: Bool) {
@@ -216,42 +278,6 @@ struct SettingsView: View {
             }
         } catch {
             // Silently handle
-        }
-    }
-
-    private func exportConfig() {
-        let panel = NSSavePanel()
-        panel.title = "Export SmartCharge Configuration"
-        panel.nameFieldStringValue = "smartcharge-config.json"
-        panel.allowedContentTypes = [.json]
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            do {
-                try configStore.exportToFile(url: url)
-                showExportSuccess = true
-            } catch {
-                importErrorMessage = error.localizedDescription
-                showImportError = true
-            }
-        }
-    }
-
-    private func importConfig() {
-        let panel = NSOpenPanel()
-        panel.title = "Import SmartCharge Configuration"
-        panel.allowedContentTypes = [.json]
-        panel.allowsMultipleSelection = false
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
-            do {
-                try configStore.importFromFile(url: url)
-                startThreshold = Double(configStore.config.chargeStartThreshold)
-                stopThreshold = Double(configStore.config.chargeStopThreshold)
-                activityLogger.log(.configChanged, batteryLevel: -1, detail: "Config imported from file")
-            } catch {
-                importErrorMessage = error.localizedDescription
-                showImportError = true
-            }
         }
     }
 }

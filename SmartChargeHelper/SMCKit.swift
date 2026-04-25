@@ -134,7 +134,7 @@ final class SMCKit {
     }
 
     func isChargingEnabled() -> Bool {
-        guard let data = readKey(Self.chargingDisableKey) else { return true }
+        guard let data = readKey(Self.chargingDisableKey), !data.isEmpty else { return true }
         return data[0] == 0x00
     }
 

@@ -9,6 +9,7 @@ final class UpdateChecker: ObservableObject {
 
     private let repoOwner = "a217-anjali"
     private let repoName = "SmartCharge"
+    private var currentTask: URLSessionDataTask?
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "UpdateChecker")
 
     var appVersion: String {
@@ -20,7 +21,10 @@ final class UpdateChecker: ObservableObject {
         isChecking = true
         checkError = nil
 
-        guard let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest") else { return }
+        guard let url = URL(string: "https://api.github.com/repos/\(repoOwner)/\(repoName)/releases/latest") else {
+            isChecking = false
+            return
+        }
 
         var request = URLRequest(url: url)
         request.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
@@ -28,12 +32,14 @@ final class UpdateChecker: ObservableObject {
 
         Self.logger.info("Checking for updates (current: v\(self.appVersion))")
 
-        URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
+        let task = URLSession.shared.dataTask(with: request) { [weak self] data, _, error in
             Task { @MainActor [weak self] in
                 guard let self = self else { return }
                 self.isChecking = false
+                self.currentTask = nil
 
                 if let error = error {
+                    if (error as NSError).code == NSURLErrorCancelled { return }
                     self.checkError = error.localizedDescription
                     Self.logger.error("Update check failed: \(error.localizedDescription)")
                     return
@@ -57,7 +63,15 @@ final class UpdateChecker: ObservableObject {
                     Self.logger.info("App is up to date")
                 }
             }
-        }.resume()
+        }
+        currentTask = task
+        task.resume()
+    }
+
+    func cancelCheck() {
+        currentTask?.cancel()
+        currentTask = nil
+        isChecking = false
     }
 
     private func isNewer(_ remote: String, than local: String) -> Bool {

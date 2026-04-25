@@ -15,7 +15,16 @@ final class BatteryMonitor: ObservableObject {
         self.pollInterval = pollInterval
     }
 
+    deinit {
+        timer?.invalidate()
+        timer = nil
+    }
+
     func start() {
+        guard timer == nil else {
+            Self.logger.debug("Battery monitor already running")
+            return
+        }
         Self.logger.info("Battery monitor started (polling every \(self.pollInterval)s)")
         refresh()
         timer = Timer.scheduledTimer(withTimeInterval: pollInterval, repeats: true) { [weak self] _ in
@@ -55,7 +64,6 @@ final class BatteryMonitor: ObservableObject {
 
         let batteryHealth = desc["BatteryHealth"] as? String
         let maxCapacity = desc[kIOPSMaxCapacityKey] as? Int
-
         let cycleCount = readCycleCount()
 
         batteryState = BatteryState(
@@ -68,7 +76,7 @@ final class BatteryMonitor: ObservableObject {
             maxCapacity: maxCapacity
         )
 
-        Self.logger.debug("Battery: \(level)%, plugged: \(isPluggedIn), charging: \(isCharging), health: \(batteryHealth ?? "n/a"), cycles: \(cycleCount ?? -1)")
+        Self.logger.debug("Battery: \(level)%, plugged: \(isPluggedIn), charging: \(isCharging)")
     }
 
     private func readCycleCount() -> Int? {
