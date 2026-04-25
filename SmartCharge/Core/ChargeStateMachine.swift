@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import os
 
 enum ChargeState: String, CustomStringConvertible {
     case waiting = "Waiting"
@@ -12,14 +13,18 @@ enum ChargeState: String, CustomStringConvertible {
 final class ChargeStateMachine: ObservableObject {
     @Published private(set) var state: ChargeState = .waiting
     @Published private(set) var lastTransition: Date?
+    @Published var lastError: String?
 
     private let helperProxy: HelperProxy
     private let notificationManager: NotificationManager
+    private let activityLogger: ActivityLogger
     private var cancellables = Set<AnyCancellable>()
+    private static let logger = Logger(subsystem: "com.smartcharge.app", category: "StateMachine")
 
-    init(helperProxy: HelperProxy, notificationManager: NotificationManager) {
+    init(helperProxy: HelperProxy, notificationManager: NotificationManager, activityLogger: ActivityLogger) {
         self.helperProxy = helperProxy
         self.notificationManager = notificationManager
+        self.activityLogger = activityLogger
     }
 
     func evaluate(battery: BatteryState, config: ChargeConfig) {
@@ -29,21 +34,25 @@ final class ChargeStateMachine: ObservableObject {
         switch state {
         case .waiting:
             if battery.level <= config.chargeStartThreshold {
+                Self.logger.info("Battery at \(battery.level)% ≤ \(config.chargeStartThreshold)% → start charging")
                 transitionTo(.charging, battery: battery, config: config)
             }
 
         case .charging:
             if battery.level >= config.chargeStopThreshold {
+                Self.logger.info("Battery at \(battery.level)% ≥ \(config.chargeStopThreshold)% → stop charging")
                 transitionTo(.waiting, battery: battery, config: config)
             }
         }
     }
 
     func forceDisableCharging() {
-        helperProxy.disableCharging { success, error in
+        Self.logger.info("Force disabling charging (app quit)")
+        helperProxy.disableCharging { [weak self] success, error in
             if !success {
-                print("Failed to disable charging: \(error ?? "unknown")")
+                Self.logger.error("Failed to force-disable charging: \(error ?? "unknown")")
             }
+            self?.activityLogger.log(.appTerminated, batteryLevel: -1, detail: "Charging re-enabled on quit")
         }
         state = .waiting
         lastTransition = Date()
@@ -53,6 +62,7 @@ final class ChargeStateMachine: ObservableObject {
         let oldState = state
         state = newState
         lastTransition = Date()
+        lastError = nil
 
         switch newState {
         case .charging:
@@ -62,8 +72,14 @@ final class ChargeStateMachine: ObservableObject {
                         title: "Charging Started",
                         body: "Battery at \(battery.level)% — charging to \(config.chargeStopThreshold)%"
                     )
+                    self?.activityLogger.log(.chargingStarted, batteryLevel: battery.level,
+                        detail: "Charging to \(config.chargeStopThreshold)%")
                 } else {
-                    print("Failed to enable charging: \(error ?? "unknown")")
+                    let msg = error ?? "Unknown error"
+                    Self.logger.error("Enable charging failed: \(msg)")
+                    self?.lastError = msg
+                    self?.activityLogger.log(.helperError, batteryLevel: battery.level,
+                        detail: "Failed to enable charging: \(msg)")
                 }
             }
 
@@ -73,12 +89,14 @@ final class ChargeStateMachine: ObservableObject {
                     let reason = oldState == .charging
                         ? "Battery reached \(config.chargeStopThreshold)%"
                         : "Battery above \(config.chargeStartThreshold)%"
-                    self?.notificationManager.send(
-                        title: "Charging Paused",
-                        body: reason
-                    )
+                    self?.notificationManager.send(title: "Charging Paused", body: reason)
+                    self?.activityLogger.log(.chargingStopped, batteryLevel: battery.level, detail: reason)
                 } else {
-                    print("Failed to disable charging: \(error ?? "unknown")")
+                    let msg = error ?? "Unknown error"
+                    Self.logger.error("Disable charging failed: \(msg)")
+                    self?.lastError = msg
+                    self?.activityLogger.log(.helperError, batteryLevel: battery.level,
+                        detail: "Failed to disable charging: \(msg)")
                 }
             }
         }

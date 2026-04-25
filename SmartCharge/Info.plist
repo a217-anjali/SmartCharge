@@ -20,6 +20,8 @@
     <string>13.0</string>
     <key>LSUIElement</key>
     <false/>
+    <key>NSHumanReadableCopyright</key>
+    <string>Copyright © 2026 a217-anjali. MIT License.</string>
     <key>SMPrivilegedExecutables</key>
     <dict>
         <key>com.smartcharge.helper</key>

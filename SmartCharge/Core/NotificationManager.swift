@@ -1,15 +1,21 @@
 import Foundation
 import UserNotifications
+import os
 
 final class NotificationManager {
     private var isAuthorized = false
     var notificationsEnabled = true
+    private static let logger = Logger(subsystem: "com.smartcharge.app", category: "Notifications")
 
     func requestPermission() {
         UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { granted, error in
             self.isAuthorized = granted
-            if let error = error {
-                print("Notification permission error: \(error)")
+            if granted {
+                Self.logger.info("Notification permission granted")
+            } else if let error = error {
+                Self.logger.error("Notification permission denied: \(error.localizedDescription)")
+            } else {
+                Self.logger.warning("Notification permission denied by user")
             }
         }
     }
@@ -27,6 +33,12 @@ final class NotificationManager {
             content: content,
             trigger: nil
         )
-        UNUserNotificationCenter.current().add(request)
+        UNUserNotificationCenter.current().add(request) { error in
+            if let error = error {
+                Self.logger.error("Failed to deliver notification: \(error.localizedDescription)")
+            } else {
+                Self.logger.debug("Notification sent: \(title)")
+            }
+        }
     }
 }

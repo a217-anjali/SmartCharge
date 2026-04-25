@@ -16,8 +16,16 @@ struct MenuBarView: View {
             LabeledRow("Battery", value: batteryMonitor.batteryState.levelDescription)
             LabeledRow("Power", value: batteryMonitor.batteryState.statusDescription)
             LabeledRow("Charge Control", value: stateMachine.state.description)
-            LabeledRow("Start At", value: "≤ \(configStore.config.chargeStartThreshold)%")
-            LabeledRow("Stop At", value: "≥ \(configStore.config.chargeStopThreshold)%")
+            LabeledRow("Start At", value: "\u{2264} \(configStore.config.chargeStartThreshold)%")
+            LabeledRow("Stop At", value: "\u{2265} \(configStore.config.chargeStopThreshold)%")
+
+            if let health = batteryMonitor.batteryState.batteryHealth {
+                LabeledRow("Health", value: health)
+            }
+
+            if let cycles = batteryMonitor.batteryState.cycleCount {
+                LabeledRow("Cycles", value: "\(cycles)")
+            }
 
             if let lastTransition = stateMachine.lastTransition {
                 LabeledRow("Last Change", value: lastTransition.formatted(date: .omitted, time: .shortened))
@@ -32,6 +40,10 @@ struct MenuBarView: View {
             }
 
             Divider()
+
+            Button("Open SmartCharge") {
+                NSApp.activate(ignoringOtherApps: true)
+            }
 
             Button("Check for Updates...") {
                 updateChecker.checkForUpdate()
@@ -71,5 +83,6 @@ private struct LabeledRow: View {
                 .fontWeight(.medium)
         }
         .font(.system(.body, design: .rounded))
+        .accessibilityElement(children: .combine)
     }
 }

@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 struct ChargeConfig: Codable, Equatable {
     var chargeStartThreshold: Int
@@ -19,6 +20,18 @@ struct ChargeConfig: Codable, Equatable {
             && chargeStartThreshold < chargeStopThreshold
             && (chargeStopThreshold - chargeStartThreshold) >= 10
     }
+
+    func toJSON() -> Data? {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
+        return try? encoder.encode(self)
+    }
+
+    static func fromJSON(_ data: Data) -> ChargeConfig? {
+        guard let config = try? JSONDecoder().decode(ChargeConfig.self, from: data),
+              config.isValid else { return nil }
+        return config
+    }
 }
 
 @MainActor
@@ -28,13 +41,16 @@ final class ChargeConfigStore: ObservableObject {
     }
 
     private static let key = "ChargeConfig"
+    private static let logger = Logger(subsystem: "com.smartcharge.app", category: "Config")
 
     init() {
         if let data = UserDefaults.standard.data(forKey: Self.key),
            let decoded = try? JSONDecoder().decode(ChargeConfig.self, from: data) {
             self.config = decoded
+            Self.logger.info("Loaded config: start=\(decoded.chargeStartThreshold)%, stop=\(decoded.chargeStopThreshold)%")
         } else {
             self.config = .default
+            Self.logger.info("Using default config")
         }
     }
 
@@ -46,5 +62,23 @@ final class ChargeConfigStore: ObservableObject {
 
     func reset() {
         config = .default
+        Self.logger.info("Config reset to defaults")
+    }
+
+    func exportToFile(url: URL) throws {
+        guard let data = config.toJSON() else {
+            throw NSError(domain: "SmartCharge", code: 1, userInfo: [NSLocalizedDescriptionKey: "Failed to encode config"])
+        }
+        try data.write(to: url)
+        Self.logger.info("Config exported to \(url.path)")
+    }
+
+    func importFromFile(url: URL) throws {
+        let data = try Data(contentsOf: url)
+        guard let imported = ChargeConfig.fromJSON(data) else {
+            throw NSError(domain: "SmartCharge", code: 2, userInfo: [NSLocalizedDescriptionKey: "Invalid or corrupt config file"])
+        }
+        config = imported
+        Self.logger.info("Config imported: start=\(imported.chargeStartThreshold)%, stop=\(imported.chargeStopThreshold)%")
     }
 }

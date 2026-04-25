@@ -13,8 +13,9 @@ let package = Package(
                        "Views/MainWindow.swift", "Views/MenuBarView.swift", "Views/SettingsView.swift",
                        "Core/BatteryMonitor.swift", "Core/ChargeStateMachine.swift",
                        "Core/HelperProxy.swift", "Core/NotificationManager.swift",
-                       "Core/UpdateChecker.swift",
-                       "Models/ChargeConfig.swift", "Models/BatteryState.swift"],
+                       "Core/UpdateChecker.swift", "Core/ActivityLogger.swift",
+                       "Models/ChargeConfig.swift", "Models/BatteryState.swift",
+                       "Models/ChargeEvent.swift"],
             linkerSettings: [
                 .linkedFramework("IOKit"),
                 .linkedFramework("ServiceManagement"),
