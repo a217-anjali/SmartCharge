@@ -33,8 +33,8 @@ final class SMCController: ObservableObject {
         sendCommand("enable")
     }
 
-    func disableCharging() -> Bool {
-        sendCommand("disable")
+    func disableCharging(atLevel level: Int = 50) -> Bool {
+        sendCommand("disable:\(level)")
     }
 
     func isChargingEnabled() -> Bool {

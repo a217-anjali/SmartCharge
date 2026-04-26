@@ -78,7 +78,7 @@ final class ChargeStateMachine: ObservableObject {
                 activityLogger.log(.chargingStarted, batteryLevel: battery.level, detail: reason)
             }
         case .waiting:
-            success = smcController.disableCharging()
+            success = smcController.disableCharging(atLevel: battery.level)
             if success {
                 notificationManager.send(title: "Charging Paused", body: reason)
                 activityLogger.log(.chargingStopped, batteryLevel: battery.level, detail: reason)
