@@ -14,7 +14,8 @@ let package = Package(
                 "Core/ActivityLogger.swift", "Core/BatteryMonitor.swift",
                 "Core/ChargeHistory.swift", "Core/ChargeStateMachine.swift",
                 "Core/CSVExporter.swift", "Core/GlobalShortcuts.swift",
-                "Core/HelperProxy.swift", "Core/NotificationManager.swift",
+                "Core/HelperProxy.swift", "Core/SMCController.swift",
+                "Core/NotificationManager.swift",
                 "Core/SparkleUpdateManager.swift", "Core/UpdateChecker.swift",
                 "Models/BatteryState.swift", "Models/ChargeConfig.swift",
                 "Models/ChargeEvent.swift", "Models/ChargingProfile.swift",
@@ -34,7 +35,7 @@ let package = Package(
             name: "SmartChargeHelper",
             path: "SmartChargeHelper",
             exclude: ["Info.plist", "launchd.plist"],
-            sources: ["main.swift", "SMCKit.swift", "HelperProtocol.swift"],
+            sources: ["main.swift"],
             linkerSettings: [
                 .linkedFramework("IOKit")
             ]

@@ -15,150 +15,81 @@ final class ChargeStateMachine: ObservableObject {
     @Published private(set) var lastTransition: Date?
     @Published var lastError: String?
 
-    private let helperProxy: HelperProxy
+    private let smcController: SMCController
     private let notificationManager: NotificationManager
     private let activityLogger: ActivityLogger
     private var isTransitioning = false
     private var hasEnforcedInitialState = false
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "StateMachine")
 
-    init(helperProxy: HelperProxy, notificationManager: NotificationManager, activityLogger: ActivityLogger) {
-        self.helperProxy = helperProxy
+    init(smcController: SMCController, notificationManager: NotificationManager, activityLogger: ActivityLogger) {
+        self.smcController = smcController
         self.notificationManager = notificationManager
         self.activityLogger = activityLogger
     }
 
     func evaluate(battery: BatteryState, config: ChargeConfig) {
         guard battery.level >= 0, battery.isPluggedIn else { return }
-        guard !isTransitioning else {
-            Self.logger.debug("Skipping evaluate — transition in progress")
-            return
-        }
+        guard !isTransitioning else { return }
 
-        // On first evaluation after launch: enforce the correct charging state.
-        // Without this, the app starts in "waiting" but never sends an SMC command
-        // to actually disable charging — so macOS charges freely.
         if !hasEnforcedInitialState {
             hasEnforcedInitialState = true
-            if battery.level > config.chargeStartThreshold && battery.level < config.chargeStopThreshold {
-                Self.logger.info("Initial state: battery at \(battery.level)% (between \(config.chargeStartThreshold)-\(config.chargeStopThreshold)%) — disabling charging")
-                enforceDisableCharging(battery: battery, config: config)
-                return
-            } else if battery.level >= config.chargeStopThreshold {
-                Self.logger.info("Initial state: battery at \(battery.level)% >= \(config.chargeStopThreshold)% — disabling charging")
-                enforceDisableCharging(battery: battery, config: config)
-                return
+            if battery.level <= config.chargeStartThreshold {
+                Self.logger.info("Startup: battery at \(battery.level)% <= \(config.chargeStartThreshold)% — enabling charging")
+                performTransition(to: .charging, battery: battery, config: config, reason: "Startup: below threshold")
             } else {
-                Self.logger.info("Initial state: battery at \(battery.level)% <= \(config.chargeStartThreshold)% — enabling charging")
-                transitionTo(.charging, battery: battery, config: config)
-                return
+                Self.logger.info("Startup: battery at \(battery.level)% — disabling charging until \(config.chargeStartThreshold)%")
+                performTransition(to: .waiting, battery: battery, config: config, reason: "Startup: charging paused at \(battery.level)%")
             }
+            return
         }
 
         switch state {
         case .waiting:
             if battery.level <= config.chargeStartThreshold {
-                Self.logger.info("Battery at \(battery.level)% <= \(config.chargeStartThreshold)% — start charging")
-                transitionTo(.charging, battery: battery, config: config)
+                Self.logger.info("Battery \(battery.level)% <= \(config.chargeStartThreshold)% — start charging")
+                performTransition(to: .charging, battery: battery, config: config, reason: "Battery dropped to \(battery.level)%")
             }
-
         case .charging:
             if battery.level >= config.chargeStopThreshold {
-                Self.logger.info("Battery at \(battery.level)% >= \(config.chargeStopThreshold)% — stop charging")
-                transitionTo(.waiting, battery: battery, config: config)
+                Self.logger.info("Battery \(battery.level)% >= \(config.chargeStopThreshold)% — stop charging")
+                performTransition(to: .waiting, battery: battery, config: config, reason: "Battery reached \(config.chargeStopThreshold)%")
             }
         }
     }
 
     func forceDisableCharging() {
-        Self.logger.info("Force disabling charging (app quit)")
-        helperProxy.disableCharging { [weak self] success, error in
-            if !success {
-                Self.logger.error("Failed to force-disable charging: \(error ?? "unknown")")
-            }
-            self?.activityLogger.log(.appTerminated, batteryLevel: -1, detail: "Charging re-enabled on quit")
-        }
-        state = .waiting
-        lastTransition = Date()
+        let success = smcController.enableCharging()
+        Self.logger.info("App terminating — re-enabled charging: \(success)")
+        activityLogger.log(.appTerminated, batteryLevel: -1, detail: "Charging re-enabled on quit")
     }
 
-    private func enforceDisableCharging(battery: BatteryState, config: ChargeConfig) {
-        state = .waiting
-        lastTransition = Date()
-        isTransitioning = true
-        let level = battery.level
-
-        helperProxy.disableCharging { [weak self] success, error in
-            guard let self = self else { return }
-            self.isTransitioning = false
-            if success {
-                Self.logger.info("Initial charging disabled at \(level)%")
-                self.notificationManager.send(
-                    title: "SmartCharge Active",
-                    body: "Charging paused at \(level)% — will start at \(config.chargeStartThreshold)%"
-                )
-                self.activityLogger.log(.chargingStopped, batteryLevel: level,
-                    detail: "Startup: charging disabled until \(config.chargeStartThreshold)%")
-            } else {
-                let msg = error ?? "Unknown error"
-                Self.logger.error("Failed to enforce initial state: \(msg)")
-                self.lastError = msg
-                self.activityLogger.log(.helperError, batteryLevel: level,
-                    detail: "Startup: failed to disable charging: \(msg)")
-            }
-        }
-    }
-
-    private func transitionTo(_ newState: ChargeState, battery: BatteryState, config: ChargeConfig) {
-        let oldState = state
+    private func performTransition(to newState: ChargeState, battery: BatteryState, config: ChargeConfig, reason: String) {
         state = newState
         lastTransition = Date()
         lastError = nil
-        isTransitioning = true
 
-        let level = battery.level
-        let stopThreshold = config.chargeStopThreshold
-        let startThreshold = config.chargeStartThreshold
-
+        let success: Bool
         switch newState {
         case .charging:
-            helperProxy.enableCharging { [weak self] success, error in
-                guard let self = self else { return }
-                self.isTransitioning = false
-                if success {
-                    self.notificationManager.send(
-                        title: "Charging Started",
-                        body: "Battery at \(level)% — charging to \(stopThreshold)%"
-                    )
-                    self.activityLogger.log(.chargingStarted, batteryLevel: level,
-                        detail: "Charging to \(stopThreshold)%")
-                } else {
-                    let msg = error ?? "Unknown error"
-                    Self.logger.error("Enable charging failed: \(msg)")
-                    self.lastError = msg
-                    self.activityLogger.log(.helperError, batteryLevel: level,
-                        detail: "Failed to enable charging: \(msg)")
-                }
+            success = smcController.enableCharging()
+            if success {
+                notificationManager.send(title: "Charging Started", body: "Battery at \(battery.level)% — charging to \(config.chargeStopThreshold)%")
+                activityLogger.log(.chargingStarted, batteryLevel: battery.level, detail: reason)
             }
-
         case .waiting:
-            helperProxy.disableCharging { [weak self] success, error in
-                guard let self = self else { return }
-                self.isTransitioning = false
-                if success {
-                    let reason = oldState == .charging
-                        ? "Battery reached \(stopThreshold)%"
-                        : "Battery above \(startThreshold)%"
-                    self.notificationManager.send(title: "Charging Paused", body: reason)
-                    self.activityLogger.log(.chargingStopped, batteryLevel: level, detail: reason)
-                } else {
-                    let msg = error ?? "Unknown error"
-                    Self.logger.error("Disable charging failed: \(msg)")
-                    self.lastError = msg
-                    self.activityLogger.log(.helperError, batteryLevel: level,
-                        detail: "Failed to disable charging: \(msg)")
-                }
+            success = smcController.disableCharging()
+            if success {
+                notificationManager.send(title: "Charging Paused", body: reason)
+                activityLogger.log(.chargingStopped, batteryLevel: battery.level, detail: reason)
             }
+        }
+
+        if !success {
+            let msg = smcController.lastError ?? "SMC write failed"
+            Self.logger.error("Transition to \(newState.rawValue) failed: \(msg)")
+            lastError = msg
+            activityLogger.log(.helperError, batteryLevel: battery.level, detail: msg)
         }
     }
 }

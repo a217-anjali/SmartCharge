@@ -5,7 +5,7 @@ struct MainWindow: View {
     @ObservedObject var stateMachine: ChargeStateMachine
     @ObservedObject var configStore: ChargeConfigStore
     @ObservedObject var updateChecker: UpdateChecker
-    @ObservedObject var helperProxy: HelperProxy
+    @ObservedObject var smcController: SMCController
     @ObservedObject var activityLogger: ActivityLogger
     @ObservedObject var chargeHistory: ChargeHistory
     @ObservedObject var profileManager: ProfileManager
@@ -56,14 +56,14 @@ struct MainWindow: View {
 
     @ViewBuilder
     private var errorBanner: some View {
-        if let error = stateMachine.lastError ?? helperProxy.lastError {
+        if let error = stateMachine.lastError ?? smcController.lastError {
             HStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
                 Text(error).lineLimit(2)
                 Spacer()
                 Button("Dismiss") {
                     stateMachine.lastError = nil
-                    helperProxy.lastError = nil
+                    smcController.lastError = nil
                 }
                 .buttonStyle(.bordered).tint(.white)
             }

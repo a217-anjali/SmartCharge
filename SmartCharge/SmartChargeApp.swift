@@ -24,7 +24,7 @@ struct SmartChargeApp: App {
 
     @StateObject private var configStore = ChargeConfigStore()
     @StateObject private var batteryMonitor = BatteryMonitor()
-    @StateObject private var helperProxy: HelperProxy
+    @StateObject private var smcController: SMCController
     @StateObject private var stateMachine: ChargeStateMachine
     @StateObject private var updateChecker = UpdateChecker()
     @StateObject private var activityLogger: ActivityLogger
@@ -39,11 +39,11 @@ struct SmartChargeApp: App {
     init() {
         let nm = NotificationManager()
         nm.requestPermission()
-        let hp = HelperProxy()
+        let smc = SMCController()
         let al = ActivityLogger()
-        let sm = ChargeStateMachine(helperProxy: hp, notificationManager: nm, activityLogger: al)
+        let sm = ChargeStateMachine(smcController: smc, notificationManager: nm, activityLogger: al)
 
-        _helperProxy = StateObject(wrappedValue: hp)
+        _smcController = StateObject(wrappedValue: smc)
         _stateMachine = StateObject(wrappedValue: sm)
         _activityLogger = StateObject(wrappedValue: al)
     }
@@ -57,7 +57,7 @@ struct SmartChargeApp: App {
                         stateMachine: stateMachine,
                         configStore: configStore,
                         updateChecker: updateChecker,
-                        helperProxy: helperProxy,
+                        smcController: smcController,
                         activityLogger: activityLogger,
                         chargeHistory: chargeHistory,
                         profileManager: profileManager
@@ -73,6 +73,11 @@ struct SmartChargeApp: App {
                 guard !hasAppeared else { return }
                 hasAppeared = true
 
+                if !smcController.open() {
+                    activityLogger.log(.helperError, batteryLevel: -1,
+                        detail: "Cannot open SMC — run app with sudo or install via .pkg")
+                }
+
                 appDelegate.onTerminate = { [weak sm = stateMachine] in
                     sm?.forceDisableCharging()
                 }
@@ -84,12 +89,11 @@ struct SmartChargeApp: App {
                     chargeHistory: chargeHistory
                 )
 
-                globalShortcuts.onToggleCharging = { [weak sm = stateMachine, weak hp = helperProxy] in
-                    // Toggle charge state
-                    if sm?.state == .charging {
-                        hp?.disableCharging { _, _ in }
+                globalShortcuts.onToggleCharging = { [weak smc = smcController] in
+                    if smc?.isChargingEnabled() == true {
+                        _ = smc?.disableCharging()
                     } else {
-                        hp?.enableCharging { _, _ in }
+                        _ = smc?.enableCharging()
                     }
                 }
                 globalShortcuts.onShowWindow = {
