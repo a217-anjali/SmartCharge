@@ -19,6 +19,7 @@ final class ChargeStateMachine: ObservableObject {
     private let notificationManager: NotificationManager
     private let activityLogger: ActivityLogger
     private var isTransitioning = false
+    private var hasEnforcedInitialState = false
     private static let logger = Logger(subsystem: "com.smartcharge.app", category: "StateMachine")
 
     init(helperProxy: HelperProxy, notificationManager: NotificationManager, activityLogger: ActivityLogger) {
@@ -32,6 +33,26 @@ final class ChargeStateMachine: ObservableObject {
         guard !isTransitioning else {
             Self.logger.debug("Skipping evaluate — transition in progress")
             return
+        }
+
+        // On first evaluation after launch: enforce the correct charging state.
+        // Without this, the app starts in "waiting" but never sends an SMC command
+        // to actually disable charging — so macOS charges freely.
+        if !hasEnforcedInitialState {
+            hasEnforcedInitialState = true
+            if battery.level > config.chargeStartThreshold && battery.level < config.chargeStopThreshold {
+                Self.logger.info("Initial state: battery at \(battery.level)% (between \(config.chargeStartThreshold)-\(config.chargeStopThreshold)%) — disabling charging")
+                enforceDisableCharging(battery: battery, config: config)
+                return
+            } else if battery.level >= config.chargeStopThreshold {
+                Self.logger.info("Initial state: battery at \(battery.level)% >= \(config.chargeStopThreshold)% — disabling charging")
+                enforceDisableCharging(battery: battery, config: config)
+                return
+            } else {
+                Self.logger.info("Initial state: battery at \(battery.level)% <= \(config.chargeStartThreshold)% — enabling charging")
+                transitionTo(.charging, battery: battery, config: config)
+                return
+            }
         }
 
         switch state {
@@ -59,6 +80,33 @@ final class ChargeStateMachine: ObservableObject {
         }
         state = .waiting
         lastTransition = Date()
+    }
+
+    private func enforceDisableCharging(battery: BatteryState, config: ChargeConfig) {
+        state = .waiting
+        lastTransition = Date()
+        isTransitioning = true
+        let level = battery.level
+
+        helperProxy.disableCharging { [weak self] success, error in
+            guard let self = self else { return }
+            self.isTransitioning = false
+            if success {
+                Self.logger.info("Initial charging disabled at \(level)%")
+                self.notificationManager.send(
+                    title: "SmartCharge Active",
+                    body: "Charging paused at \(level)% — will start at \(config.chargeStartThreshold)%"
+                )
+                self.activityLogger.log(.chargingStopped, batteryLevel: level,
+                    detail: "Startup: charging disabled until \(config.chargeStartThreshold)%")
+            } else {
+                let msg = error ?? "Unknown error"
+                Self.logger.error("Failed to enforce initial state: \(msg)")
+                self.lastError = msg
+                self.activityLogger.log(.helperError, batteryLevel: level,
+                    detail: "Startup: failed to disable charging: \(msg)")
+            }
+        }
     }
 
     private func transitionTo(_ newState: ChargeState, battery: BatteryState, config: ChargeConfig) {
